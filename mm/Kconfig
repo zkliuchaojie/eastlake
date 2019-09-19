@@ -665,6 +665,16 @@ config IDLE_PAGE_TRACKING
 config ARCH_HAS_ZONE_DEVICE
 	bool
 
+config ZONE_PM_EMU
+    bool "Emulate PM with DRAM"
+    default n
+    help
+        Because of without PM device, what we can do is emulating it with DRAM
+        to continue our projects depending on PM. To emulate PM, you should use
+        the kernel parameter of memmap=nn[KMG]!ss[KMG] to reserver space for PM.
+        With this option, you will have the zone of ZONE_PM_EMU, which is never
+        used by other codes, and you have the full control of it.
+
 config ZONE_DEVICE
 	bool "Device memory (pmem, HMM, etc...) hotplug support"
 	depends on MEMORY_HOTPLUG

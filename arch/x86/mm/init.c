@@ -645,6 +645,22 @@ static void __init memory_map_bottom_up(unsigned long map_start,
 	}
 }
 
+#ifdef CONFIG_ZONE_PM_EMU
+static void __init memory_map_pm_emu(void)
+{
+	struct e820_entry *entry;
+	int i;
+	for (i = 0; i < e820_table->nr_entries; i++) {
+		entry = e820_table->entries + i;
+		/* for simple, we just manage only one PM zone for now */
+		if (entry->type == E820_TYPE_PRAM) {
+			init_memory_mapping(entry->addr, entry->addr+entry->size);
+			break;
+		}
+	}
+}
+#endif
+
 void __init init_mem_mapping(void)
 {
 	unsigned long end;
@@ -692,6 +708,10 @@ void __init init_mem_mapping(void)
 	}
 #else
 	early_ioremap_page_table_range_init();
+#endif
+
+#ifdef CONFIG_ZONE_PM_EMU
+	memory_map_pm_emu();
 #endif
 
 	load_cr3(swapper_pg_dir);

@@ -2040,6 +2040,12 @@ extern void __init free_area_init_node(int nid, unsigned long * zones_size,
 		unsigned long zone_start_pfn, unsigned long *zholes_size);
 extern void free_initmem(void);
 
+#ifdef CONFIG_ZONE_PM_EMU
+extern void register_zone_pm_emu(pg_data_t *pgdat);
+extern void print_zone_pm_emu(pg_data_t *pgdat);
+extern void try_to_access_zone_pm_emu(pg_data_t *pgdat);
+#endif
+
 /*
  * Free reserved pages within range [PAGE_ALIGN(start), end & PAGE_MASK)
  * into the buddy system. The freed pages will be poisoned with pattern

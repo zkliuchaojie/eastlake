@@ -354,6 +354,20 @@ enum zone_type {
 
 };
 
+#ifdef CONFIG_ZONE_PM_EMU
+enum pm_zone_type {
+	/*
+	 * ZONE_PM_EMU is not a real persistent memory zone, just emulated
+	 * by DRAM with the help of kernel parameter memmap=nn[KMG]!ss[KMG].
+	 * In e820_table, this zone is corresponding to the E820_TYPE_PRAM,
+	 * and corresponding to IORES_DESC_PERSISTENT_MEMORY_LEGACY in
+	 * iomem_resource.
+	 */
+	ZONE_PM_EMU,
+	__MAX_NR_PM_ZONES
+};
+#endif
+
 #ifndef __GENERATING_BOUNDS_H
 
 struct zone {
@@ -508,6 +522,26 @@ struct zone {
 	atomic_long_t		vm_numa_stat[NR_VM_NUMA_STAT_ITEMS];
 } ____cacheline_internodealigned_in_smp;
 
+
+#ifdef CONFIG_ZONE_PM_EMU
+struct pm_zone {
+#ifdef CONFIG_NUMA
+	int node;
+#endif
+	struct pglist_data  *pm_zone_pgdat;
+
+	/*
+	 * suppose that there are no holes in pm, so the physical address is
+	 * (pm_zone_phys_addr)-(pm_zone_phys_addr+pm_zone_size-1), and the virtual
+	 * address is (pm_zone_virt_addr)-(pm_zone_virt_addr+pm_zone_size).
+	 */
+	phys_addr_t         pm_zone_phys_addr;
+	void                *pm_zone_virt_addr;
+	unsigned long       pm_zone_size;
+	const char          *name;
+};
+#endif
+
 enum pgdat_flags {
 	PGDAT_CONGESTED,		/* pgdat has many dirty pages backed by
 					 * a congested BDI
@@ -625,6 +659,13 @@ typedef struct pglist_data {
 	struct zone node_zones[MAX_NR_ZONES];
 	struct zonelist node_zonelists[MAX_ZONELISTS];
 	int nr_zones;
+
+#ifdef CONFIG_ZONE_PM_EMU
+	struct pm_zone node_pm_zones[MAX_NR_PM_ZONES];
+	/* for now, nr_pm_zones is 0 or 1 */
+	int nr_pm_zones;
+#endif
+
 #ifdef CONFIG_FLAT_NODE_MEM_MAP	/* means !SPARSEMEM */
 	struct page *node_mem_map;
 #ifdef CONFIG_PAGE_EXTENSION

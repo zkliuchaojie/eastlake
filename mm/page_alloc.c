@@ -72,6 +72,10 @@
 #include <asm/div64.h>
 #include "internal.h"
 
+#ifdef CONFIG_ZONE_PM_EMU
+#include <asm/e820/api.h>
+#endif
+
 /* prevent >1 _updater_ of zone percpu pageset ->high and ->batch fields */
 static DEFINE_MUTEX(pcp_batch_high_lock);
 #define MIN_PERCPU_PAGELIST_FRACTION	(8)
@@ -236,6 +240,12 @@ static char * const zone_names[MAX_NR_ZONES] = {
 	 "Device",
 #endif
 };
+
+#ifdef CONFIG_ZONE_PM_EMU
+static char * const pm_zone_names[MAX_NR_PM_ZONES] = {
+	"PM_EMU",
+};
+#endif
 
 char * const migratetype_names[MIGRATE_TYPES] = {
 	"Unmovable",
@@ -6448,7 +6458,92 @@ void __init free_area_init_node(int nid, unsigned long *zones_size,
 	pgdat_set_deferred_range(pgdat);
 
 	free_area_init_core(pgdat);
+
+#ifdef CONFIG_ZONE_PM_EMU
+	pr_info("start to register_zone_pm_emu\n");
+	register_zone_pm_emu(pgdat);
+	/* for debug */
+	print_zone_pm_emu(pgdat);
+	try_to_access_zone_pm_emu(pgdat);
+#endif
+
 }
+
+#ifdef CONFIG_ZONE_PM_EMU
+
+#ifdef CONFIG_MEMORY_HOTPLUG
+static int e820_range_to_nid(resource_size_t addr)
+{
+	return memory_add_physaddr_to_nid(addr);
+}
+#else
+static int e820_range_to_nid(resource_size_t addr)
+{
+	return NUMA_NO_NODE;
+}
+#endif
+
+/*
+ * get the PRAM memory region from e820_table because
+ * the iomem_resource is not ready.
+ */
+void __init register_zone_pm_emu(pg_data_t *pgdat)
+{
+	struct e820_entry *entry;
+	struct pm_zone *pm_zone;
+	int i;
+	for (i = 0; i < e820_table->nr_entries; i++) {
+		entry = e820_table->entries + i;
+		/* for simple, we just manage only one PM zone for now */
+		if (entry->type == E820_TYPE_PRAM) {
+			pm_zone = pgdat->node_pm_zones + ZONE_PM_EMU;
+			pm_zone->pm_zone_pgdat = pgdat;
+			pm_zone->node = e820_range_to_nid(entry->addr);
+			pm_zone->pm_zone_phys_addr = entry->addr;
+			// the zone_pm_emu is already mapped to kernel virtual space
+			pm_zone->pm_zone_virt_addr = __va(entry->addr);
+			pm_zone->pm_zone_size = entry->size;
+			pm_zone->name = pm_zone_names[ZONE_PM_EMU];
+			pgdat->nr_pm_zones = 1;
+			return;
+		}
+	}
+	pr_info("there is no PRAM range in e820_table\n");
+	pgdat->nr_pm_zones = 0;
+}
+
+void __init print_zone_pm_emu(pg_data_t *pgdat)
+{
+	struct pm_zone *pm_zone;
+	if (pgdat->nr_pm_zones == 0)
+		return;
+	pm_zone = pgdat->node_pm_zones + ZONE_PM_EMU;
+	pr_info("%s:\n", pm_zone->name);
+	pr_info("   node: %d\n", pm_zone->node);
+	pr_info("   zone range[mem %#018llx-%#018llx]\n", pm_zone->pm_zone_phys_addr,\
+		pm_zone->pm_zone_phys_addr + pm_zone->pm_zone_size - 1);
+	pr_info("   PAGE_OFFSET: %#lx\n", PAGE_OFFSET);
+	pr_info("   virtual address: %#lx\n", (unsigned long)pm_zone->pm_zone_virt_addr);
+	pr_info("   zone_size: %ld\n", pm_zone->pm_zone_size);
+}
+
+void __init try_to_access_zone_pm_emu(pg_data_t *pgdat)
+{
+	char project_name[] = "eastlake";
+	struct pm_zone *pm_zone;
+	char *virt_addr;
+	int i;
+	if (pgdat->nr_pm_zones == 0)
+		return;
+	pm_zone = pgdat->node_pm_zones + ZONE_PM_EMU;
+	virt_addr = (char *)pm_zone->pm_zone_virt_addr;
+	for (i = 0; i < strlen(project_name); i++) {
+		*(virt_addr+i) = project_name[i];
+	}
+	*(virt_addr+i) = '\0';
+	pr_info("our project name: %s\n", virt_addr);
+}
+#endif
 
 #if defined(CONFIG_HAVE_MEMBLOCK) && !defined(CONFIG_FLAT_NODE_MEM_MAP)
 /*

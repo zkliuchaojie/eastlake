@@ -18,6 +18,9 @@ int main(void)
 	/* The enum constants to put into include/generated/bounds.h */
 	DEFINE(NR_PAGEFLAGS, __NR_PAGEFLAGS);
 	DEFINE(MAX_NR_ZONES, __MAX_NR_ZONES);
+#ifdef CONFIG_ZONE_PM_EMU
+	DEFINE(MAX_NR_PM_ZONES, __MAX_NR_PM_ZONES);
+#endif
 #ifdef CONFIG_SMP
 	DEFINE(NR_CPUS_BITS, ilog2(CONFIG_NR_CPUS));
 #endif
