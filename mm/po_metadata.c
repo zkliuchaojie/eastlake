@@ -2,11 +2,49 @@
  * Author Chen
  */
 #include <linux/po_metadata.h>
-#define unsign_to_p()
-#define p_to_unsign()
+//include<linux/po_malloc.h> 上层提供的
+#define unsign_to_p(a) (a) //指针和物理地址具体转换还不清楚
+#define p_to_unsign(a) (a)
+//#include<linux/slab.h>
+
+//GFP_KERNEL 依赖暂时无法解决，直接摘出来
+//#define ___GFP_IO               0x40u
+//#define ___GFP_FS               0x80u
+
+#define __GFP_IO               0x40u
+#define __GFP_FS               0x80u
+//#define __GFP_RECLAIM ((__force gfp_t)(___GFP_DIRECT_RECLAIM|___GFP_KS    WAPD_RECLAIM))
+//#define GFP_KERNEL      (__GFP_RECLAIM | __GFP_IO | __GFP_FS)
+
+#define GFP_KERNEL      (__GFP_IO | __GFP_FS) //依赖难以解决，删掉第一个试试
+
+unsigned long long po_super;
+void *po_alloc(int size)
+{
+	//return kmalloc(size,GFP_KERNEL);//依赖难以解决，暂时用malloc吧
+	return malloc(size);
+}
+
+
+
+
 void po_super_init()
 {
+	struct po_super  *ps;
+	struct po_ns_trie_node *root;
+	ps=po_alloc(sizeof(struct po_super));
+	po_super=p_to_unsign(ps);
+	root=po_alloc(sizeof(struct po_ns_trie_node));
+	root->depth=1;
+	ps->trie_root=unsign_to_p(root);
+	ps->trie_node_count=1;
+	ps->container_count=1;
+	ps->po_count=0;
+}
 
+struct po_super* po_get_super() //以后应该上层提供，暂时先这样写
+{
+	return p_to_unsign(po_super);
 }
 
 struct po_ns_record * po_ns_search(const char* str,int strlen){
@@ -23,7 +61,7 @@ struct po_ns_record *po_ns_search_container(struct po_ns_container *container,in
 
 }
 
-void po_insert_record(struct po_ns_container,struct po_ns_record){
+void po_insert_record(struct po_ns_container *container,struct po_ns_record *record) {
 
 }
 
@@ -37,4 +75,11 @@ int po_ns_need_burst(struct po_ns_container *container){
 
 void po_ns_burst(struct po_ns_trie_node *prev_trie_node,int prev_index){
 
+}
+int main()
+{
+	po_super_init();
+	struct po_super *p=po_get_super();
+	printf("%d",p->po_count);
+	return 0;
 }

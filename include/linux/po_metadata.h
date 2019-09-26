@@ -13,7 +13,7 @@ struct po_super
 	int trie_node_count;
 	int container_count;
 	int po_count;
-}
+};
 
 struct po_desc
 {
@@ -29,19 +29,19 @@ struct po_ns_record
 	unsigned long long str;
 	unsigned long long desc;
 	unsigned long long next;
-}
+};
 
 struct po_ns_container
 {
 	unsigned long long record_first;
 	int cnt_limit;
-}
+};
 
 struct po_ns_trie_node
 {
 	int depth;
 	unsigned long long ptrs[PO_NS_LENGTH];
-}
+};
 
 extern struct po_ns_record * po_ns_search(const char* str,int strlen); //extren 关键字有的内核源码加了，有的地方没加，暂时加上吧
 extern struct po_ns_record * po_ns_insert(const char* str,int strlen);
