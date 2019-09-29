@@ -6495,7 +6495,7 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 	for (i = 0; i < e820_table->nr_entries; i++) {
 		entry = e820_table->entries + i;
 		/* for simple, we just manage only one PM zone for now */
-		if (entry->type == E820_TYPE_PRAM) {
+		if (entry->type == E820_TYPE_PRAM || entry->type == E820_TYPE_PMEM) {
 			pm_zone = pgdat->node_pm_zones + ZONE_PM_EMU;
 			pm_zone->pm_zone_pgdat = pgdat;
 			pm_zone->node = e820_range_to_nid(entry->addr);
