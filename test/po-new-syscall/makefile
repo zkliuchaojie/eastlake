@@ -11,9 +11,9 @@ STDIR = st
 
 include $(ROOTDIR)/test/test-framework/makefile
 include ut/makefile
-include mt/makefile
-include mmt/makefile
-include st/makefile
+#include mt/makefile
+#//include mmt/makefile
+#include st/makefile
 
 CC = g++
 LD = g++

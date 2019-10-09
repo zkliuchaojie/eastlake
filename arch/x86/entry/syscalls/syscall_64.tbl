@@ -345,6 +345,11 @@
 334	common	rseq			__x64_sys_rseq
 
 #
+# syscalls about persistent object
+#
+400	64	po_creat		__x64_sys_po_creat
+
+#
 # x32-specific system call numbers start at 512 to avoid cache impact
 # for native 64-bit operation. The __x32_compat_sys stubs are created
 # on-the-fly for compat_sys_*() compatibility system calls if X86_X32

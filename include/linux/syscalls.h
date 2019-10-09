@@ -908,6 +908,12 @@ asmlinkage long sys_rseq(struct rseq __user *rseq, uint32_t rseq_len,
 			 int flags, uint32_t sig);
 
 /*
+ * Syscalls for persistent object, and they are just available for x86_64 for now.
+ */
+asmlinkage long sys_po_creat(const char __user *poname, umode_t mode);
+
+
+/*
  * Architecture-specific system calls
  */
 
