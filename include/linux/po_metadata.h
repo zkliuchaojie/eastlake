@@ -9,38 +9,45 @@
 
 struct po_super
 {
-	unsigned long long trie_root;
+	struct po_ns_trie_node *trie_root;
 	int trie_node_count;
 	int container_count;
 	int po_count;
 };
+struct po_chunk
+{
+	unsigned long long start;
+	unsigned long long size;//bytes
+	struct po_chunk *next_pa;
+};
 
 struct po_desc
 {
-	struct list_head d_vm_list;
-	unsigned long long prime_seg;//记录持久对象的首地址。
-	uid_t	d_uid;//用户id
-	gid_t	d_gid;//组id
+	unsigned long long size;
+	struct po_chunk *data_pa;//pa means physical address
+	uid_t	uid;//用户id
+	gid_t	gid;//组id
+	umode_t mode;
 };
 
 struct po_ns_record
 {
 	int strlen;
-	unsigned long long str;
-	unsigned long long desc;
-	unsigned long long next;
+	char *str;
+	struct po_desc *desc;
+	struct po_ns_record *next;
 };
 
 struct po_ns_container
 {
-	unsigned long long record_first;
+	struct po_ns_record *record_first;//貌似必须第一个
 	int cnt_limit;
 };
 
 struct po_ns_trie_node
 {
 	int depth;
-	unsigned long long ptrs[PO_NS_LENGTH];
+	struct po_ns_trie_node ptrs[PO_NS_LENGTH];
 };
 
 extern struct po_ns_record * po_ns_search(const char* str,int strlen); //extren 关键字有的内核源码加了，有的地方没加，暂时加上吧

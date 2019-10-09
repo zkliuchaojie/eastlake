@@ -38,7 +38,7 @@ void po_super_init()
 	root->depth=1;
 	ps->trie_root=unsign_to_p(root);
 	ps->trie_node_count=1;
-	ps->container_count=1;
+	ps->container_count=0;
 	ps->po_count=0;
 }
 
@@ -51,6 +51,22 @@ struct po_ns_record * po_ns_search(const char* str,int strlen){
 
 }
 struct po_ns_record * po_ns_insert(const char* str,int strlen){
+	struct po_super *ps;
+	int depth;
+	struct po_ns_trie_node *prev_trie_node,*trie_node,root;
+	ps=po_get_super();
+	root=ps->unsign_to_p(trie_root);
+	depth=1;
+	prev_trie_node=NULL;
+	trie_node=root;
+	while(depth<=strlen)
+	{
+		index=(int)str[depth-1];
+		prev_trie_node=trie_node;
+		//trie_node=(struct po_ns_trie_node *)unsign_to_p()
+
+	}
+
 
 }
 struct po_ns_record * po_ns_delete(const char* str,int strlen){
@@ -62,7 +78,9 @@ struct po_ns_record *po_ns_search_container(struct po_ns_container *container,in
 }
 
 void po_insert_record(struct po_ns_container *container,struct po_ns_record *record) {
-
+	record->next=unsign_to_p(container->record_first);
+	container->record_first=p_to_unsign(record);
+	container->cnt_limit++;
 }
 
 struct po_ns_record *po_ns_delete_record(struct po_ns_container *container,int depth,const char *str,int str_length){
