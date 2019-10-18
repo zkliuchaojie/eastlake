@@ -106,14 +106,15 @@ SYSCALL_DEFINE2(po_creat, const char __user *, poname, umode_t, mode)
 		}
 	}
 
+	rcd = po_ns_insert(kponame, len);
+	if (rcd == NULL)
+		return -EEXIST;
 	desc = kpmalloc(sizeof(*desc), GFP_KERNEL);
 	desc->size = 0;
 	desc->data_pa = NULL;
 	desc->uid = current_uid().val;
 	desc->gid = current_gid().val;
 	desc->mode = mode;
-
-	rcd = po_ns_insert(kponame, len);
 	rcd->desc = (struct po_desc *)virt_to_phys(desc);
 
 	return 0;
