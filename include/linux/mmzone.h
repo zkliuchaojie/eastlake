@@ -524,11 +524,28 @@ struct zone {
 
 
 #ifdef CONFIG_ZONE_PM_EMU
+/* 
+ * like the suber block in filesystem
+ * contains some global info
+*/
+// MAGIC NUM eastlake
+#define PM_MAGIC (0x656173746c616b65)
+
+struct pm_super {
+	uint64_t magic;
+	unsigned long size;
+	unsigned long free;
+	unsigned long used;
+	bool initialized;
+};
 struct pm_zone {
 #ifdef CONFIG_NUMA
 	int node;
 #endif
 	struct pglist_data  *pm_zone_pgdat;
+	// pm_zone is put in the DRAM
+	// Put super into the PM for persistency 
+	struct pm_super *super;	
 
 	/*
 	 * suppose that there are no holes in pm, so the physical address is
@@ -536,8 +553,10 @@ struct pm_zone {
 	 * address is (pm_zone_virt_addr)-(pm_zone_virt_addr+pm_zone_size).
 	 */
 	phys_addr_t         pm_zone_phys_addr;
+	phys_addr_t	pm_zone_phys_end;
 	void                *pm_zone_virt_addr;
 	unsigned long       pm_zone_size;
+	
 	const char          *name;
 };
 #endif
@@ -664,6 +683,8 @@ typedef struct pglist_data {
 	struct pm_zone node_pm_zones[MAX_NR_PM_ZONES];
 	/* for now, nr_pm_zones is 0 or 1 */
 	int nr_pm_zones;
+	/* it will point to an area in PM */
+	struct pt_page *node_pt_map;
 #endif
 
 #ifdef CONFIG_FLAT_NODE_MEM_MAP	/* means !SPARSEMEM */

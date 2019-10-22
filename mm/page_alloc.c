@@ -6499,12 +6499,39 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 			pm_zone = pgdat->node_pm_zones + ZONE_PM_EMU;
 			pm_zone->pm_zone_pgdat = pgdat;
 			pm_zone->node = e820_range_to_nid(entry->addr);
-			pm_zone->pm_zone_phys_addr = entry->addr;
+			// make it align to PAGE_SIZE
+			pm_zone->pm_zone_phys_addr = ALIGN(entry->addr, PAGE_SIZE);
+			pm_zone->pm_zone_phys_end = ALIGN_DOWN(entry->addr + entry->size, PAGE_SIZE);
 			// the zone_pm_emu is already mapped to kernel virtual space
-			pm_zone->pm_zone_virt_addr = __va(entry->addr);
-			pm_zone->pm_zone_size = entry->size;
+			pm_zone->pm_zone_virt_addr = __va(pm_zone->pm_zone_phys_addr);
+			//pm_zone->pm_zone_size = entry->size;
+			pm_zone->pm_zone_size = pm_zone->pm_zone_phys_end - pm_zone->pm_zone_phys_addr;
 			pm_zone->name = pm_zone_names[ZONE_PM_EMU];
 			pgdat->nr_pm_zones = 1;
+			
+			// initialization of pm_super, we put the info at the beginning of PM
+			pm_zone->super = (struct pm_super*)pm_zone->pm_zone_virt_addr;
+			struct pm_super *super = pm_zone->super;
+			if(super->magic != PM_MAGIC || super->initialized != true) {
+				// we need to do some init work here
+				super->size = pm_zone->pm_zone_size/PAGE_SIZE;
+				// the first page is reserved for some global info
+				unsigned int order;
+				// init pt_free_area
+				for (order = 0; order < MAX_ORDER, order++) {
+					INIT_LIST_HEAD(&super->pt_free_area[order].free_list);
+					super->pt_free_area[order].nr_free = 0;	
+				}
+				
+				// node_pt_map is placed from the second page
+				unsigned long size = ALIGN(super->size * sizeof(struct pt_page), PAGE_SIZE);
+				pgdat->node_pt_map = （struct pt_page*)__va(pm_zone->pm_zone_phys_addr + PAGE_SIZE);
+				
+				
+				super->used = size + 1;	
+				super->free = super->size - super->used;
+				super->used = 
+			}
 			return;
 		}
 	}
