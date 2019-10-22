@@ -28,6 +28,7 @@
 #include <linux/mm_types_task.h>
 #include <linux/task_io_accounting.h>
 #include <linux/rseq.h>
+#include <linux/podtable.h>
 
 /* task_struct member predeclarations (sorted alphabetically): */
 struct audit_context;
@@ -861,6 +862,9 @@ struct task_struct {
 
 	/* Open file information: */
 	struct files_struct		*files;
+
+	/* Open persistent object information: */
+	struct pos_struct		pos;
 
 	/* Namespaces: */
 	struct nsproxy			*nsproxy;
