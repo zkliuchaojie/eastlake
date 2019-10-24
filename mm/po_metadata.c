@@ -157,12 +157,3 @@ int po_ns_need_burst(struct po_ns_container *container){
 void po_ns_burst(struct po_ns_trie_node *prev_trie_node,int prev_index){
 
 }
-int main()
-{
-	po_super_init();
-	struct po_super *p=po_get_super();
-	printf("%d\n",p->po_count);
-	struct po_ns_record * p1=po_ns_insert("test",4);
-	printf("%p\n",p1);
-	return 0;
-}

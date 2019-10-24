@@ -1,9 +1,13 @@
 /*
  * Management of metadata and namespace for persistent object
  * Author Chen
- * */
+ */
+
+#ifndef _LINUX_PO_METADATA_H_
+#define _LINUX_PO_METADATA_H_
+
 #include <linux/list.h> //vm_list
-#include <types.h> //uid gid
+#include <linux/types.h> //uid gid
 
 #define PO_NS_LENGTH 128		//ASCII 0~128
 
@@ -53,3 +57,5 @@ struct po_ns_trie_node
 extern struct po_ns_record * po_ns_search(const char* str,int strlen); //extren 关键字有的内核源码加了，有的地方没加，暂时加上吧
 extern struct po_ns_record * po_ns_insert(const char* str,int strlen);
 extern struct po_ns_record * po_ns_delete(const char* str,int strlen);
+
+#endif
