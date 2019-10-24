@@ -98,6 +98,13 @@ struct free_area {
 	unsigned long		nr_free;
 };
 
+#ifdef CONFIG_ZONE_PM_EMU
+struct pt_free_area {
+	struct list_head	free_list;
+	unsigned long		nr_free;
+};
+#endif
+
 struct pglist_data;
 
 /*
@@ -536,8 +543,14 @@ struct pm_super {
 	unsigned long size;
 	unsigned long free;
 	unsigned long used;
+	struct pt_free_area pt_free_area[MAX_ORDER];
 	bool initialized;
 };
+struct pt_page *pt_map;
+EXPORT_SYMBOL(pt_map);
+
+struct 
+
 struct pm_zone {
 #ifdef CONFIG_NUMA
 	int node;
@@ -552,10 +565,10 @@ struct pm_zone {
 	 * (pm_zone_phys_addr)-(pm_zone_phys_addr+pm_zone_size-1), and the virtual
 	 * address is (pm_zone_virt_addr)-(pm_zone_virt_addr+pm_zone_size).
 	 */
-	phys_addr_t         pm_zone_phys_addr;
+	phys_addr_t	pm_zone_phys_addr;
 	phys_addr_t	pm_zone_phys_end;
-	void                *pm_zone_virt_addr;
-	unsigned long       pm_zone_size;
+	void		*pm_zone_virt_addr;
+	unsigned long	pm_zone_size;
 	
 	const char          *name;
 };

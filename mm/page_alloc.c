@@ -197,6 +197,10 @@ unsigned int pageblock_order __read_mostly;
 
 static void __free_pages_ok(struct page *page, unsigned int order);
 
+#ifdef CONFIG_ZONE_PM_EMU
+static void __free_pt_pages_ok(struct pt_page *pt_page, unsigned int order);
+#endif
+
 /*
  * results with 256, 32 in the lowmem_reserve sysctl:
  *	1G machine -> (16M dma, 800M-16M normal, 1G-800M high)
@@ -1289,6 +1293,13 @@ static void __free_pages_ok(struct page *page, unsigned int order)
 	free_one_page(page_zone(page), page, pfn, order, migratetype);
 	local_irq_restore(flags);
 }
+
+#ifdef CONFIG_ZONE_PM_EMU
+static void __free_pt_pages_ok(struct pt_page *page, unsigned int order)
+{
+	
+}
+#endif
 
 static void __init __free_pages_boot_core(struct page *page, unsigned int order)
 {
@@ -4465,6 +4476,17 @@ void __free_pages(struct page *page, unsigned int order)
 
 EXPORT_SYMBOL(__free_pages);
 
+#ifdef CONFIG_ZONE_PM_EMU
+void __free_pt_pages(struct pt_page *pt_page, unsigned int order)
+{
+	if (put_pt_page_testzero(pt_page)) {
+		__free_pt_pages_ok(pt_page, order);
+	}
+}
+
+EXPORT_SYMBOL(__free_pt_pages);
+#endif
+
 void free_pages(unsigned long addr, unsigned int order)
 {
 	if (addr != 0) {
@@ -6483,6 +6505,22 @@ static int e820_range_to_nid(resource_size_t addr)
 }
 #endif
 
+void pt_page_init(pg_data_t *pgdat)
+{
+	struct pm_super *super = pgdat->node_pm_zones[ZONE_PM_EMU].super;
+	struct pt_page *map = pgdat->node_pt_map;
+	int nid = pgdat->node_id;
+	// now we only init some parts
+	for (unsigned int i = 0; i < super->size; i++) {
+		struct pt_page *pt_page = map[i];
+		pt_page->flags &= ~(NODES_MASK << NODES_PGSHIFT);
+		pt_page->flags |= (nid & NODES_MASK) << NODES_PGSHIFT;
+		atomic_set(&(pt_page)->_mapcount, -1);
+		atomic_set(&(pt_page)->_refcount, 0);
+		INIT_LIST_HEAD(&pt_page->lru);
+	}
+}
+
 /*
  * get the PRAM memory region from e820_table because
  * the iomem_resource is not ready.
@@ -6501,6 +6539,7 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 			pm_zone->node = e820_range_to_nid(entry->addr);
 			// make it align to PAGE_SIZE
 			pm_zone->pm_zone_phys_addr = ALIGN(entry->addr, PAGE_SIZE);
+			pm_zone->start_pfn = pm_zone->pm_zone_phys_addr >> PAGE_SIZE;
 			pm_zone->pm_zone_phys_end = ALIGN_DOWN(entry->addr + entry->size, PAGE_SIZE);
 			// the zone_pm_emu is already mapped to kernel virtual space
 			pm_zone->pm_zone_virt_addr = __va(pm_zone->pm_zone_phys_addr);
@@ -6525,12 +6564,13 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 				
 				// node_pt_map is placed from the second page
 				unsigned long size = ALIGN(super->size * sizeof(struct pt_page), PAGE_SIZE);
-				pgdat->node_pt_map = （struct pt_page*)__va(pm_zone->pm_zone_phys_addr + PAGE_SIZE);
+				pgdat->node_pt_map = (struct pt_page*)__va(pm_zone->pm_zone_phys_addr + PAGE_SIZE);
 				
-				
+				pt_page_init(pgdat->node_pt_map, super->size, pgdat->node_id);	
+					
 				super->used = size + 1;	
 				super->free = super->size - super->used;
-				super->used = 
+				
 			}
 			return;
 		}

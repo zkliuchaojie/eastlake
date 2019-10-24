@@ -877,6 +877,10 @@ extern void free_pages(unsigned long addr, unsigned int order);
 extern void free_unref_page(struct page *page);
 extern void free_unref_page_list(struct list_head *list);
 
+#ifdef CONFIG_ZONE_PM_EMU
+extern void __free_pt_pages(struct pt_page *pt_page, unsigned int order);
+#endif
+
 struct page_frag_cache;
 extern void __page_frag_cache_drain(struct page *page, unsigned int count);
 extern void *page_frag_alloc(struct page_frag_cache *nc,

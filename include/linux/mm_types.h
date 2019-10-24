@@ -231,7 +231,7 @@ struct pt_page {
 	atomic_t _refcount;	/* Usage count. */
 
 	/* Third double word block */
-	struct list_head lru;	/* Pageout list */
+	struct list_head lru;	/* Pageout list (only the first page need to be inserted) */
 
 	/* Remaninder is not double word aligned */
 	unsigned long private;	/* Mapping-private opaque data:

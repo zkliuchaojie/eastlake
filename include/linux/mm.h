@@ -520,6 +520,14 @@ static inline int put_page_testzero(struct page *page)
 	return page_ref_dec_and_test(page);
 }
 
+#ifdef CONFIG_ZONE_PM_EMU
+static inline int put_pt_page_testzero(struct pt_page *pt_page)
+{
+	// the check is omitted now
+	return pt_page_ref_dec_and_test(pt_page);
+}
+#endif
+
 /*
  * Try to grab a ref unless the page has a refcount of zero, return false if
  * that is the case.
