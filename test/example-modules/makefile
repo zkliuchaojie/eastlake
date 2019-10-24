@@ -15,12 +15,13 @@ include mt/makefile
 include mmt/makefile
 include st/makefile
 
-CC = g++
-LD = g++
-CXX = g++
+CC = gcc
+LD = gcc
+AR = ar
 
 # Flags passed to the C++ compiler.
-CXXFLAGS += -g -Wall -Wno-unused -Wno-sign-compare -Wextra -pthread -I. -I$(ROOTDIR) -std=c++11
+CFLAGS += -g -Wall -Wno-unused -Wno-sign-compare -Wextra -pthread -I. -I$(ROOTDIR) -ansi
+ARFLAGS = crv
 
 run-all: run-ut run-mt run-mmt run-st
 
