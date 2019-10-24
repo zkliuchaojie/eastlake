@@ -94,7 +94,7 @@ inline int pos_insert(struct po_desc *pod)
 	int i;
 	struct po_desc **po_array;
 
-	po_array = current->pos.po_array;
+	po_array = current->pos->po_array;
 	for (i = 0; i < NR_OPEN_DEFAULT; i++) {
 		if (po_array[i] == NULL) {
 			po_array[i] = pod;
@@ -111,7 +111,7 @@ inline int pos_delete(unsigned int pod)
 	if (pod < 0 || pod >= NR_OPEN_DEFAULT)
 		return -EBADF;
 
-	po_array = current->pos.po_array;
+	po_array = current->pos->po_array;
 	if (po_array[pod] == NULL)
 		return -EBADF;
 	po_array[pod] = NULL;
@@ -123,7 +123,7 @@ inline bool pos_is_open(struct po_desc *pod)
 	int i;
 	struct po_desc **po_array;
 
-	po_array = current->pos.po_array;
+	po_array = current->pos->po_array;
 	for (i = 0; i < NR_OPEN_DEFAULT; i++) {
 		if (po_array[i] == pod)
 			return true;
@@ -131,6 +131,21 @@ inline bool pos_is_open(struct po_desc *pod)
 	return false;
 }
 
+struct pos_struct init_pos = {
+	.count		= ATOMIC_INIT(1),
+	.po_array	= {0},
+};
+
+void exit_pos(struct task_struct *tsk)
+{
+	struct pos_struct *pos = tsk->pos;
+
+	if (pos) {
+		tsk->pos = NULL;
+		if (atomic_dec_and_test(&pos->count))
+			kfree(pos);
+	}
+}
 
 /*
  * For now, we didn't consider the parameter of mode.
@@ -141,7 +156,7 @@ SYSCALL_DEFINE2(po_creat, const char __user *, poname, umode_t, mode)
 	int len, i;
 	struct po_ns_record *rcd;
 	struct po_desc *desc;
-	int reval;
+	int retval;
 
 	kponame = kmalloc(MAX_PO_NAME_LENGTH, GFP_KERNEL);
 	if (!kponame)
@@ -174,16 +189,16 @@ SYSCALL_DEFINE2(po_creat, const char __user *, poname, umode_t, mode)
 	desc->mode = mode;
 	rcd->desc = (struct po_desc *)virt_to_phys(desc);
 
-	reval = pos_insert(desc);
-	if (reval < 0) {
+	retval = pos_insert(desc);
+	if (retval < 0) {
 		po_ns_delete(kponame, len);
 		kfree(kponame);
 		kfree(desc);
-		return reval;
+		return retval;
 	}
 
 	kfree(kponame);
-	return 0;
+	return retval;
 }
 
 SYSCALL_DEFINE1(po_unlink, const char __user *, poname)
@@ -193,7 +208,7 @@ SYSCALL_DEFINE1(po_unlink, const char __user *, poname)
 	struct po_ns_record *rcd;
 	struct po_desc *desc;
 	struct po_chunk *curr, *next;
-	int reval;
+	int retval;
 
 	kponame = kmalloc(MAX_PO_NAME_LENGTH, GFP_KERNEL);
 	if (!kponame)

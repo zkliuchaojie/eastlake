@@ -9,6 +9,7 @@
 #include <linux/po_metadata.h>
 #endif
 #include <asm-generic/bitsperlong.h>
+#include <linux/atomic.h>
 
 #define NR_OPEN_DEFAULT BITS_PER_LONG
 
@@ -21,6 +22,7 @@
  * we will enhance it.
  */
 struct pos_struct {
+	atomic_t count;
 	struct po_desc *po_array[NR_OPEN_DEFAULT];
 };
 

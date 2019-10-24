@@ -864,7 +864,7 @@ struct task_struct {
 	struct files_struct		*files;
 
 	/* Open persistent object information: */
-	struct pos_struct		pos;
+	struct pos_struct		*pos;
 
 	/* Namespaces: */
 	struct nsproxy			*nsproxy;

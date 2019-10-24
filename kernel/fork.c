@@ -104,6 +104,8 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/task.h>
 
+#include <linux/podtable.h>
+
 /*
  * Minimum number of threads to boot the kernel
  */
@@ -1369,6 +1371,39 @@ static int copy_fs(unsigned long clone_flags, struct task_struct *tsk)
 	return 0;
 }
 
+/*
+ * Note: we use CLONE_FILES as pos flag.
+ */
+
+static int copy_pos(unsigned long clone_flags, struct task_struct *tsk)
+{
+	struct pos_struct *oldp, *newp;
+	int error = 0;
+
+	/*
+	 * A background process may not have any files ...
+	 */
+	oldp = current->pos;
+	if (!oldp)
+		goto out;
+
+	if (clone_flags & CLONE_FILES) {
+		atomic_inc(&oldp->count);
+		goto out;
+	}
+
+	newp = kmalloc(sizeof(*newp), GFP_KERNEL);
+	if (!newp)
+		goto out;
+	atomic_set(&newp->count, 1);
+	memset(newp->po_array, 0, NR_OPEN_DEFAULT * sizeof(struct po_desc *));
+
+	tsk->pos = newp;
+	error = 0;
+out:
+	return error;
+}
+
 static int copy_files(unsigned long clone_flags, struct task_struct *tsk)
 {
 	struct files_struct *oldf, *newf;
@@ -1880,9 +1915,12 @@ static __latent_entropy struct task_struct *copy_process(
 	retval = copy_files(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_semundo;
-	retval = copy_fs(clone_flags, p);
+	retval = copy_pos(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_files;
+	retval = copy_fs(clone_flags, p);
+	if (retval)
+		goto bad_fork_cleanup_pos;
 	retval = copy_sighand(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_fs;
@@ -2108,6 +2146,8 @@ bad_fork_cleanup_sighand:
 	__cleanup_sighand(p->sighand);
 bad_fork_cleanup_fs:
 	exit_fs(p); /* blocking */
+bad_fork_cleanup_pos:
+	exit_pos(p);
 bad_fork_cleanup_files:
 	exit_files(p); /* blocking */
 bad_fork_cleanup_semundo:

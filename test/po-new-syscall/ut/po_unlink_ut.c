@@ -14,9 +14,11 @@ TEST(po_unlink, simple_test)
 	char poname[] = "eastlake";
 	int pod;
 
-	pod = syscall(401, poname);
-
+	pod = syscall(400, poname, 0);
 	ASSERT_GE(pod, 0);
+
+	pod = syscall(401, poname);
+	ASSERT_EQ(pod, 0);
 }
 
 TEST(po_unlink, invalid_argument_test)
