@@ -2,12 +2,14 @@
  * Author: liuchaojie
  */
 
+#define _GNU_SOURCE         /* See feature_test_macros(7) */
 
-#include "gtest/gtest.h"
+#include "ctest/ctest.h"
 
 #include <stdio.h>
 #include <errno.h>
 #include <unistd.h>
+#include <sys/syscall.h>   /* For SYS_xxx definitions */
 
 TEST(po_unlink, simple_test)
 {
