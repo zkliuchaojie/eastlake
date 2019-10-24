@@ -47,7 +47,7 @@ struct po_ns_container
 struct po_ns_trie_node
 {
 	int depth;
-	struct po_ns_trie_node ptrs[PO_NS_LENGTH];
+	struct po_ns_trie_node *ptrs[PO_NS_LENGTH];
 };
 
 extern struct po_ns_record * po_ns_search(const char* str,int strlen); //extren 关键字有的内核源码加了，有的地方没加，暂时加上吧
