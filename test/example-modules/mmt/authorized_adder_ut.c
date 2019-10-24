@@ -1,4 +1,4 @@
-#include "gtest/gtest.h"
+#include "ctest/ctest.h"
 
 #ifndef __EXAMPLE_MODULES_AUTHORIZED_ADDER_H__
 #include "example-modules/authorized_adder.h"
