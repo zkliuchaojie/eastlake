@@ -6576,7 +6576,7 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 				// pt_page init
 				pt_page_init(pgdat);	
 					
-				super->used = size + 1;	
+				super->used = (size >> PAGE_SHIFT) + 1;	
 				super->free = super->size - super->used;
 			
 				super->initialized = true;
@@ -6615,7 +6615,8 @@ void __init test_and_check(pg_data_t *pgdat)
 	struct pm_zone *pm_zone = pgdat->node_pm_zones + ZONE_PM_EMU;
 	struct pt_page *pt_page = pfn_to_pt_page(pm_zone->start_pfn);
 	unsigned long pfn = pt_page_to_pfn(pgdat->node_pt_map + 10);
-	pr_info("pt_page(pfn 0): %p %p pfn(page 10): %ld\n", pgdat->node_pt_map, pt_page, pfn);
+	unsigned long pfn0 = pt_page_to_pfn(pgdat->node_pt_map);
+	pr_info("pt_page(pfn 0): %px %px pfn(page0):%ld pfn(page 10): %ld\n", pgdat->node_pt_map, pt_page, pfn0, pfn);
 }
 
 void __init try_to_access_zone_pm_emu(pg_data_t *pgdat)
