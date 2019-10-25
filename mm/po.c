@@ -321,3 +321,14 @@ SYSCALL_DEFINE3(po_open, const char __user *, poname, int, flags, umode_t, mode)
 	kfree(kponame);
 	return retval;
 }
+
+/*
+ * for now, we just free the slot of po_array.
+ * Note that, if a po has been modified, we should
+ * flush the changes to NVM.
+ * TODO: flush modified data.
+ */
+SYSCALL_DEFINE1(po_close, unsigned int, pod)
+{
+	return pos_delete(pod);
+}

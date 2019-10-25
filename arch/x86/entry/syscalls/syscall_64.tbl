@@ -350,6 +350,7 @@
 400	64	po_creat		__x64_sys_po_creat
 401	64	po_unlink		__x64_sys_po_unlink
 402	64	po_open			__x64_sys_po_open
+403	64	po_close		__x64_sys_po_close
 
 #
 # x32-specific system call numbers start at 512 to avoid cache impact

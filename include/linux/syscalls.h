@@ -913,6 +913,7 @@ asmlinkage long sys_rseq(struct rseq __user *rseq, uint32_t rseq_len,
 asmlinkage long sys_po_creat(const char __user *poname, umode_t mode);
 asmlinkage long sys_po_unlink(const char __user *poname);
 asmlinkage long sys_po_open(const char __user *poname, int flags, umode_t mode);
+asmlinkage long sys_po_clos(unsigned ing pod);
 
 
 /*
