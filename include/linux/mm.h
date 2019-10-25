@@ -983,6 +983,9 @@ static inline int page_zone_id(struct page *page)
 
 #ifdef NODE_NOT_IN_PAGE_FLAGS
 extern int page_to_nid(const struct page *page);
+#ifdef CONFIG_ZONE_PM_EMU
+extern int pt_page_to_nid(const struct pt_page *pt_page);
+#endif
 #else
 static inline int page_to_nid(const struct page *page)
 {
@@ -990,6 +993,12 @@ static inline int page_to_nid(const struct page *page)
 
 	return (PF_POISONED_CHECK(p)->flags >> NODES_PGSHIFT) & NODES_MASK;
 }
+#ifdef CONFIG_ZONE_PM_EMU
+static inline int pt_page_to_nid(const struct pt_page *pt_page)
+{
+        return (pt_page->flags >> NODES_PGSHIFT) & NODES_MASK;
+}
+#endif
 #endif
 
 #ifdef CONFIG_NUMA_BALANCING
@@ -2051,6 +2060,7 @@ extern void free_initmem(void);
 #ifdef CONFIG_ZONE_PM_EMU
 extern void register_zone_pm_emu(pg_data_t *pgdat);
 extern void print_zone_pm_emu(pg_data_t *pgdat);
+extern void test_and_check(pg_data_t *pgdat);
 extern void try_to_access_zone_pm_emu(pg_data_t *pgdat);
 #endif
 

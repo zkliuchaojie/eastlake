@@ -6486,7 +6486,8 @@ void __init free_area_init_node(int nid, unsigned long *zones_size,
 	register_zone_pm_emu(pgdat);
 	/* for debug */
 	print_zone_pm_emu(pgdat);
-	try_to_access_zone_pm_emu(pgdat);
+	test_and_check(pgdat);
+	//try_to_access_zone_pm_emu(pgdat);
 #endif
 
 }
@@ -6511,8 +6512,9 @@ void pt_page_init(pg_data_t *pgdat)
 	struct pt_page *map = pgdat->node_pt_map;
 	int nid = pgdat->node_id;
 	// now we only init some parts
-	for (unsigned int i = 0; i < super->size; i++) {
-		struct pt_page *pt_page = map[i];
+	unsigned int i;
+	for (i = 0; i < super->size; i++) {
+		struct pt_page *pt_page = map + i;
 		pt_page->flags &= ~(NODES_MASK << NODES_PGSHIFT);
 		pt_page->flags |= (nid & NODES_MASK) << NODES_PGSHIFT;
 		atomic_set(&(pt_page)->_mapcount, -1);
@@ -6530,16 +6532,21 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 	struct e820_entry *entry;
 	struct pm_zone *pm_zone;
 	int i;
+	struct pm_super *super;
+	unsigned int order;
+	unsigned long size;
 	for (i = 0; i < e820_table->nr_entries; i++) {
 		entry = e820_table->entries + i;
 		/* for simple, we just manage only one PM zone for now */
-		if (entry->type == E820_TYPE_PRAM || entry->type == E820_TYPE_PMEM) {
+		if ((entry->type == E820_TYPE_PRAM || entry->type == E820_TYPE_PMEM) && \
+			( (entry->addr>>PAGE_SHIFT) >= pgdat->node_start_pfn && ((entry->addr + entry->size) >> PAGE_SHIFT) <= pgdat_end_pfn(pgdat)) ) {
+			pr_info("strat to register pm_zone\n");
 			pm_zone = pgdat->node_pm_zones + ZONE_PM_EMU;
 			pm_zone->pm_zone_pgdat = pgdat;
 			pm_zone->node = e820_range_to_nid(entry->addr);
 			// make it align to PAGE_SIZE
 			pm_zone->pm_zone_phys_addr = ALIGN(entry->addr, PAGE_SIZE);
-			pm_zone->start_pfn = pm_zone->pm_zone_phys_addr >> PAGE_SIZE;
+			pm_zone->start_pfn = pm_zone->pm_zone_phys_addr >> PAGE_SHIFT;
 			pm_zone->pm_zone_phys_end = ALIGN_DOWN(entry->addr + entry->size, PAGE_SIZE);
 			// the zone_pm_emu is already mapped to kernel virtual space
 			pm_zone->pm_zone_virt_addr = __va(pm_zone->pm_zone_phys_addr);
@@ -6550,27 +6557,30 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 			
 			// initialization of pm_super, we put the info at the beginning of PM
 			pm_zone->super = (struct pm_super*)pm_zone->pm_zone_virt_addr;
-			struct pm_super *super = pm_zone->super;
+			super = pm_zone->super;
 			if(super->magic != PM_MAGIC || super->initialized != true) {
 				// we need to do some init work here
-				super->size = pm_zone->pm_zone_size/PAGE_SIZE;
+				super->size = pm_zone->pm_zone_size >> PAGE_SHIFT;
 				// the first page is reserved for some global info
-				unsigned int order;
+				
 				// init pt_free_area
-				for (order = 0; order < MAX_ORDER, order++) {
+				for (order = 0; order < MAX_ORDER; order++) {
 					INIT_LIST_HEAD(&super->pt_free_area[order].free_list);
 					super->pt_free_area[order].nr_free = 0;	
 				}
 				
 				// node_pt_map is placed from the second page
-				unsigned long size = ALIGN(super->size * sizeof(struct pt_page), PAGE_SIZE);
+				size = ALIGN(super->size * sizeof(struct pt_page), PAGE_SIZE);
 				pgdat->node_pt_map = (struct pt_page*)__va(pm_zone->pm_zone_phys_addr + PAGE_SIZE);
 				
-				pt_page_init(pgdat->node_pt_map, super->size, pgdat->node_id);	
+				// pt_page init
+				pt_page_init(pgdat);	
 					
 				super->used = size + 1;	
 				super->free = super->size - super->used;
-				
+			
+				super->initialized = true;
+				super->magic = PM_MAGIC;	
 			}
 			return;
 		}
@@ -6581,7 +6591,8 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 
 void __init print_zone_pm_emu(pg_data_t *pgdat)
 {
-	struct pm_zone *pm_zone;
+	struct pm_zone	*pm_zone;
+	struct pm_super	*super;
 	if (pgdat->nr_pm_zones == 0)
 		return;
 	pm_zone = pgdat->node_pm_zones + ZONE_PM_EMU;
@@ -6592,6 +6603,19 @@ void __init print_zone_pm_emu(pg_data_t *pgdat)
 	pr_info("   PAGE_OFFSET: %#lx\n", PAGE_OFFSET);
 	pr_info("   virtual address: %#lx\n", (unsigned long)pm_zone->pm_zone_virt_addr);
 	pr_info("   zone_size: %ld\n", pm_zone->pm_zone_size);
+	
+	super = pm_zone->super;
+	// print some super info
+	pr_info("   super magic: %llx, size: %ld, free: %ld, used: %ld, initialized: %d\n", super->magic, \
+		super->size, super->free, super->used, super->initialized);
+}
+
+void __init test_and_check(pg_data_t *pgdat)
+{
+	struct pm_zone *pm_zone = pgdat->node_pm_zones + ZONE_PM_EMU;
+	struct pt_page *pt_page = pfn_to_pt_page(pm_zone->start_pfn);
+	unsigned long pfn = pt_page_to_pfn(pgdat->node_pt_map + 10);
+	pr_info("pt_page(pfn 0): %p %p pfn(page 10): %ld\n", pgdat->node_pt_map, pt_page, pfn);
 }
 
 void __init try_to_access_zone_pm_emu(pg_data_t *pgdat)

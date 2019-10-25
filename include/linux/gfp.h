@@ -345,10 +345,10 @@ struct vm_area_struct;
  * without the underscores and use them consistently. The definitions here may
  * be used in bit comparisons.
  */
-#define __GPFP_DMA	((__force GPFP_t)___GPFP_DMA)
-#define __GPFP_HIGHMEM	((__force GPFP_t)___GPFP_HIGHMEM)
-#define __GPFP_DMA32	((__force GPFP_t)___GPFP_DMA32)
-#define __GPFP_MOVABLE	((__force GPFP_t)___GPFP_MOVABLE)  /* ZONE_MOVABLE allowed */
+#define __GPFP_DMA	((__force gpfp_t)___GPFP_DMA)
+#define __GPFP_HIGHMEM	((__force gpfp_t)___GPFP_HIGHMEM)
+#define __GPFP_DMA32	((__force gpfp_t)___GPFP_DMA32)
+#define __GPFP_MOVABLE	((__force gpfp_t)___GPFP_MOVABLE)  /* ZONE_MOVABLE allowed */
 #define GPFP_ZONEMASK	(__GPFP_DMA|__GPFP_HIGHMEM|__GPFP_DMA32|__GPFP_MOVABLE)
 
 /**
@@ -378,11 +378,11 @@ struct vm_area_struct;
  *
  * %__GPFP_ACCOUNT causes the allocation to be accounted to kmemcg.
  */
-#define __GPFP_RECLAIMABLE ((__force GPFP_t)___GPFP_RECLAIMABLE)
-#define __GPFP_WRITE	((__force GPFP_t)___GPFP_WRITE)
-#define __GPFP_HARDWALL   ((__force GPFP_t)___GPFP_HARDWALL)
-#define __GPFP_THISNODE	((__force GPFP_t)___GPFP_THISNODE)
-#define __GPFP_ACCOUNT	((__force GPFP_t)___GPFP_ACCOUNT)
+#define __GPFP_RECLAIMABLE ((__force gpfp_t)___GPFP_RECLAIMABLE)
+#define __GPFP_WRITE	((__force gpfp_t)___GPFP_WRITE)
+#define __GPFP_HARDWALL   ((__force gpfp_t)___GPFP_HARDWALL)
+#define __GPFP_THISNODE	((__force gpfp_t)___GPFP_THISNODE)
+#define __GPFP_ACCOUNT	((__force gpfp_t)___GPFP_ACCOUNT)
 
 /**
  * DOC: Watermark modifiers
@@ -406,10 +406,10 @@ struct vm_area_struct;
  * %__GPFP_NOMEMALLOC is used to explicitly forbid access to emergency reserves.
  * This takes precedence over the %__GPFP_MEMALLOC flag if both are set.
  */
-#define __GPFP_ATOMIC	((__force GPFP_t)___GPFP_ATOMIC)
-#define __GPFP_HIGH	((__force GPFP_t)___GPFP_HIGH)
-#define __GPFP_MEMALLOC	((__force GPFP_t)___GPFP_MEMALLOC)
-#define __GPFP_NOMEMALLOC ((__force GPFP_t)___GPFP_NOMEMALLOC)
+#define __GPFP_ATOMIC	((__force gpfp_t)___GPFP_ATOMIC)
+#define __GPFP_HIGH	((__force gpfp_t)___GPFP_HIGH)
+#define __GPFP_MEMALLOC	((__force gpfp_t)___GPFP_MEMALLOC)
+#define __GPFP_NOMEMALLOC ((__force gpfp_t)___GPFP_NOMEMALLOC)
 
 /**
  * DOC: Reclaim modifiers
@@ -480,14 +480,14 @@ struct vm_area_struct;
  * loop around allocator.
  * Using this flag for costly allocations is _highly_ discouraged.
  */
-#define __GPFP_IO	((__force GPFP_t)___GPFP_IO)
-#define __GPFP_FS	((__force GPFP_t)___GPFP_FS)
-#define __GPFP_DIRECT_RECLAIM	((__force GPFP_t)___GPFP_DIRECT_RECLAIM) /* Caller can reclaim */
-#define __GPFP_KSWAPD_RECLAIM	((__force GPFP_t)___GPFP_KSWAPD_RECLAIM) /* kswapd can wake */
-#define __GPFP_RECLAIM ((__force GPFP_t)(___GPFP_DIRECT_RECLAIM|___GPFP_KSWAPD_RECLAIM))
-#define __GPFP_RETRY_MAYFAIL	((__force GPFP_t)___GPFP_RETRY_MAYFAIL)
-#define __GPFP_NOFAIL	((__force GPFP_t)___GPFP_NOFAIL)
-#define __GPFP_NORETRY	((__force GPFP_t)___GPFP_NORETRY)
+#define __GPFP_IO	((__force gpfp_t)___GPFP_IO)
+#define __GPFP_FS	((__force gpfp_t)___GPFP_FS)
+#define __GPFP_DIRECT_RECLAIM	((__force gpfp_t)___GPFP_DIRECT_RECLAIM) /* Caller can reclaim */
+#define __GPFP_KSWAPD_RECLAIM	((__force gpfp_t)___GPFP_KSWAPD_RECLAIM) /* kswapd can wake */
+#define __GPFP_RECLAIM ((__force gpfp_t)(___GPFP_DIRECT_RECLAIM|___GPFP_KSWAPD_RECLAIM))
+#define __GPFP_RETRY_MAYFAIL	((__force gpfp_t)___GPFP_RETRY_MAYFAIL)
+#define __GPFP_NOFAIL	((__force gpfp_t)___GPFP_NOFAIL)
+#define __GPFP_NORETRY	((__force gpfp_t)___GPFP_NORETRY)
 
 /**
  * DOC: Action modifiers
@@ -501,16 +501,16 @@ struct vm_area_struct;
  *
  * %__GPFP_ZERO returns a zeroed page on success.
  */
-#define __GPFP_NOWARN	((__force GPFP_t)___GPFP_NOWARN)
-#define __GPFP_COMP	((__force GPFP_t)___GPFP_COMP)
-#define __GPFP_ZERO	((__force GPFP_t)___GPFP_ZERO)
+#define __GPFP_NOWARN	((__force gpfp_t)___GPFP_NOWARN)
+#define __GPFP_COMP	((__force gpfp_t)___GPFP_COMP)
+#define __GPFP_ZERO	((__force gpfp_t)___GPFP_ZERO)
 
 /* Disable lockdep for GPFP context tracking */
-#define __GPFP_NOLOCKDEP ((__force GPFP_t)___GPFP_NOLOCKDEP)
+#define __GPFP_NOLOCKDEP ((__force gpfp_t)___GPFP_NOLOCKDEP)
 
 /* Room for N __GPFP_FOO bits */
 #define __GPFP_BITS_SHIFT (23 + IS_ENABLED(CONFIG_LOCKDEP))
-#define __GPFP_BITS_MASK ((__force GPFP_t)((1 << __GPFP_BITS_SHIFT) - 1))
+#define __GPFP_BITS_MASK ((__force gpfp_t)((1 << __GPFP_BITS_SHIFT) - 1))
 
 /**
  * DOC: Useful GPFP flag combinations
@@ -799,7 +799,7 @@ __alloc_pt_pages_nodemask(gpfp_t gpfp_mask, unsigned int order, int preferred_ni
 							nodemask_t *nodemask);
 
 static inline struct pt_page *
-__alloc_pages(gpfp_t gpfp_mask, unsigned int order, int preferred_nid)
+__alloc_pt_pages(gpfp_t gpfp_mask, unsigned int order, int preferred_nid)
 {
 	return __alloc_pt_pages_nodemask(gpfp_mask, order, preferred_nid, NULL);
 }
@@ -814,7 +814,7 @@ __alloc_pt_pages_node(int nid, gpfp_t gpfp_mask, unsigned int order)
 	VM_BUG_ON(nid < 0 || nid >= MAX_NUMNODES);
 	VM_WARN_ON((gpfp_mask & __GPFP_THISNODE) && !node_online(nid));
 
-	return __alloc_pages(gfp_mask, order, nid);
+	return __alloc_pt_pages(gpfp_mask, order, nid);
 }
 
 /*

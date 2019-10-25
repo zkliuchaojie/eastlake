@@ -546,10 +546,6 @@ struct pm_super {
 	struct pt_free_area pt_free_area[MAX_ORDER];
 	bool initialized;
 };
-struct pt_page *pt_map;
-EXPORT_SYMBOL(pt_map);
-
-struct 
 
 struct pm_zone {
 #ifdef CONFIG_NUMA
@@ -567,6 +563,7 @@ struct pm_zone {
 	 */
 	phys_addr_t	pm_zone_phys_addr;
 	phys_addr_t	pm_zone_phys_end;
+	unsigned long	start_pfn;
 	void		*pm_zone_virt_addr;
 	unsigned long	pm_zone_size;
 	
@@ -1174,6 +1171,9 @@ static inline unsigned long section_nr_to_pfn(unsigned long sec)
 #define SECTION_ALIGN_DOWN(pfn)	((pfn) & PAGE_SECTION_MASK)
 
 struct page;
+#ifdef ZONE_PM_EMU
+struct pt_page;
+#endif
 struct page_ext;
 struct mem_section {
 	/*
