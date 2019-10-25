@@ -20,8 +20,7 @@ LD = gcc
 AR = ar
 
 # Flags passed to the C++ compiler.
-CFLAGS += -g -pthread -I. -I$(ROOTDIR) -std=gnu89
-CFLAGS += -I$(ROOTDIR)/include
+CFLAGS += -g -pthread -I. -std=gnu89
 ARFLAGS = crv
 
 run-all: run-ut run-mt run-mmt run-st

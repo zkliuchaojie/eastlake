@@ -148,6 +148,10 @@ void exit_pos(struct task_struct *tsk)
 }
 
 /*
+ * TODO: check if mode and flags are legal.
+ */
+
+/*
  * For now, we didn't consider the parameter of mode.
  */
 SYSCALL_DEFINE2(po_creat, const char __user *, poname, umode_t, mode)
@@ -187,6 +191,7 @@ SYSCALL_DEFINE2(po_creat, const char __user *, poname, umode_t, mode)
 	desc->uid = current_uid().val;
 	desc->gid = current_gid().val;
 	desc->mode = mode;
+	desc->flags = O_CREAT|O_RDWR;
 	rcd->desc = (struct po_desc *)virt_to_phys(desc);
 
 	retval = pos_insert(desc);
@@ -254,4 +259,65 @@ SYSCALL_DEFINE1(po_unlink, const char __user *, poname)
 
 	kfree(kponame);
 	return 0;
+}
+
+SYSCALL_DEFINE3(po_open, const char __user *, poname, int, flags, umode_t, mode)
+{
+	char *kponame;
+	int len, i;
+	struct po_ns_record *rcd;
+	struct po_desc *desc;
+	int retval;
+
+	kponame = kmalloc(MAX_PO_NAME_LENGTH, GFP_KERNEL);
+	if (!kponame)
+		return -ENOMEM;
+	len = strncpy_from_user(kponame, poname, MAX_PO_NAME_LENGTH);
+	if (len < 0) {
+		kfree(kponame);
+		return len;
+	}
+	if (len == MAX_PO_NAME_LENGTH) {
+		kfree(kponame);
+		return -ENAMETOOLONG;
+	}
+	for (i = 0; i < len; i++) {
+		if (kponame[i] == '/') {
+			kfree(kponame);
+			return -EINVAL;
+		}
+	}
+
+	rcd = po_ns_search(kponame, len);
+	if (rcd == NULL) {
+		if (flags & O_CREAT) {
+			rcd = po_ns_insert(kponame, len);
+			if (rcd == NULL) {
+				kfree(kponame);
+				return -ENOENT;
+			}
+			desc = kpmalloc(sizeof(*desc), GFP_KERNEL);
+			desc->size = 0;
+			desc->data_pa = NULL;
+			desc->uid = current_uid().val;
+			desc->gid = current_gid().val;
+			desc->mode = mode;
+			desc->flags = flags;
+			rcd->desc = (struct po_desc *)virt_to_phys(desc);
+		} else {
+			kfree(kponame);
+			return -ENOENT;
+		}
+	}
+
+	retval = pos_insert(desc);
+	if (retval < 0) {
+		po_ns_delete(kponame, len);
+		kfree(kponame);
+		kfree(desc);
+		return retval;
+	}
+
+	kfree(kponame);
+	return retval;
 }
