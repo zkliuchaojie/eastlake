@@ -17,7 +17,7 @@
 
 TEST(po_close, simple_test)
 {
-	char poname[] = "eastlake";
+	char poname[] = "l";
 	int pod;
 
 	pod = syscall(402, poname, O_CREAT|O_RDWR);
@@ -25,6 +25,9 @@ TEST(po_close, simple_test)
 
 	pod = syscall(403, pod);
 	ASSERT_GE(pod, 0);
+
+	pod = syscall(401, poname, 0);
+	ASSERT_EQ(pod, 0);
 }
 
 TEST(po_close, bad_pod_test)

@@ -13,6 +13,7 @@
  * Here, we redefine it, and this need to refactor.
  */
 #define PAGE_SHIFT_REDEFINED	12
+#define PAGE_SIZE_REDEFINED	(1UL << PAGE_SHIFT_REDEFINED)
 
 /*
  * DEFAULT_MAP_WINDOW is defained in arch/x86/include/asm/processor.h.

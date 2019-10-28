@@ -32,7 +32,7 @@ struct po_desc
 	uid_t	uid;//用户id
 	gid_t	gid;//组id
 	umode_t mode;
-	unsigned int flags;
+	unsigned int flags; // assign, when open or creat
 };
 
 struct po_ns_record
