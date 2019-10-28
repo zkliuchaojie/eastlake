@@ -494,3 +494,17 @@ SYSCALL_DEFINE6(po_mmap, unsigned long, addr, unsigned long, len, \
 	}
 	return retval;
 }
+
+/*
+ * For now, we define po_munmap as NOP */
+SYSCALL_DEFINE2(po_munmap, unsigned long, addr, size_t, len)
+{
+	/* check addr and len */
+	if (((PAGE_SIZE_REDEFINED - 1) & addr) \
+		|| ((PAGE_SIZE_REDEFINED - 1) & len) \
+		|| (len < 0))
+		return -EINVAL;
+	if (addr < PO_MAP_AREA_START || addr + len > PO_MAP_AREA_END)
+		return -EINVAL;
+	return 0;
+}
