@@ -496,7 +496,8 @@ SYSCALL_DEFINE6(po_mmap, unsigned long, addr, unsigned long, len, \
 }
 
 /*
- * For now, we define po_munmap as NOP */
+ * For now, we define po_munmap as NOP.
+ */
 SYSCALL_DEFINE2(po_munmap, unsigned long, addr, size_t, len)
 {
 	/* check addr and len */
@@ -507,4 +508,105 @@ SYSCALL_DEFINE2(po_munmap, unsigned long, addr, size_t, len)
 	if (addr < PO_MAP_AREA_START || addr + len > PO_MAP_AREA_END)
 		return -EINVAL;
 	return 0;
+}
+
+/*
+ * There are a lot of redundant codes, please
+ * refactor it in the furute.
+ */
+SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
+	unsigned long, prot, unsigned long, flags)
+{
+	struct po_chunk *new_chunk, *curr;
+	struct po_desc *desc;
+	unsigned long v_start;
+	unsigned long cnt;
+	unsigned long address;
+	struct mm_struct *mm = current->mm;
+	pgd_t *pgd;
+	p4d_t *p4d;
+	pud_t *pud;
+	pmd_t *pmd;
+	pte_t *ptep;
+	pte_t entry;
+	vm_flags_t vm_flags = 0;
+	pgprot_t pgprot;
+	long retval = 0;
+
+	/* check pod */
+	desc = pos_get(pod);
+	if (!desc)
+		return -EBADF;
+	/* check len */
+	if ((len <= 0) || ((PAGE_SIZE_REDEFINED - 1) & len))
+		return -EINVAL;
+	/* check prot, just support PROT_READ and PROT_WRITE for now*/
+	if (prot != PROT_READ && prot != PROT_WRITE \
+		&& (prot != (PROT_READ | PROT_WRITE)))
+		return -EINVAL;
+	if (prot & PROT_READ)
+		if ((!(desc->flags & O_RDONLY)) && (!(desc->flags & O_RDWR)))
+			return -EINVAL;
+	if (prot & PROT_WRITE)
+		if ((!(desc->flags & O_WRONLY)) && (!(desc->flags & O_RDWR)))
+			return -EINVAL;
+	/* check flags, just support MAP_PRIVATE for now */
+	if (flags != MAP_PRIVATE)
+		return -EINVAL;
+
+	new_chunk = (struct po_chunk *)kpmalloc(sizeof(*new_chunk), GFP_KERNEL);
+	if (!new_chunk)
+		return -ENOMEM;
+	v_start = kpmalloc(len, GFP_KERNEL);
+	if (!v_start) {
+		kpfree(new_chunk);
+		return -ENOMEM;
+	}
+
+	new_chunk->start = virt_to_phys(v_start);
+	new_chunk->size = len;
+	new_chunk->next_pa = NULL;
+	if (desc->data_pa == NULL) {
+		desc->data_pa = (struct po_chunk *)virt_to_phys(new_chunk);
+	} else {
+		curr = (struct po_chunk *)phys_to_virt(desc->data_pa);
+		while (curr->next_pa != NULL)
+			curr = (struct po_chunk *)phys_to_virt(curr->next_pa);
+		curr->next_pa = (struct po_chunk *)virt_to_phys(new_chunk);
+	}
+
+	/* mmap new_chunk */
+	vm_flags |= calc_vm_prot_bits(prot, 0) | calc_vm_flag_bits(flags) |
+		mm->def_flags | VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC;
+	pgprot = vm_get_page_prot(vm_flags);
+	/*
+	 * For now, we do not consider huge page: 2MB and 1GB.
+	 * And we just assume that there are 4-level page tables.
+	 */
+	cnt = 0;
+	while (cnt < len) {
+		address = new_chunk->start + cnt + PO_MAP_AREA_START;
+		if (retval == 0)
+			retval = address;
+		pgd = pgd_offset(mm, address);
+		p4d = p4d_alloc(mm, pgd, address);
+		if (!p4d)
+			return -ENOMEM;
+		pud = pud_alloc(mm, p4d, address);
+		if (!pud)
+			return -ENOMEM;
+		pmd = pmd_alloc(mm, pud, address);
+		if (!pmd)
+			return -ENOMEM;
+		if (pte_alloc(mm, pmd, address))
+			return -ENOMEM;
+		entry = pfn_pte((new_chunk->start+cnt)>>PAGE_SHIFT_REDEFINED, pgprot);
+		if (prot & PROT_WRITE)
+			entry = pte_mkwrite(entry);
+		ptep = pte_offset_map(pmd, address);
+		set_pte(ptep, entry);
+
+		cnt += PAGE_SIZE_REDEFINED;
+	}
+	return retval;
 }

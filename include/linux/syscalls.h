@@ -917,6 +917,8 @@ asmlinkage long sys_po_close(unsigned int pod);
 asmlinkage long sys_po_mmap(unsigned long addr, unsigned long len, unsigned long prot \
 	unsigned long flags, unsigned long pod, unsigned long pgoff);
 asmlinkage long sys_po_munmap(unsigned long addr, size_t len);
+asmlinkage long sys_po_extend(unsigned long pod, size_t len, unsigned long prot \
+	unsigned long flags);
 
 /*
  * Architecture-specific system calls

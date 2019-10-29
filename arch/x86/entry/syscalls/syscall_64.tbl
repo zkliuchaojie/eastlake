@@ -353,6 +353,7 @@
 403	64	po_close		__x64_sys_po_close
 404	64	po_mmap			__x64_sys_po_mmap
 405	64	po_munmap		__x64_sys_po_munmap
+406	64	po_extend		__x64_sys_po_extend
 
 #
 # x32-specific system call numbers start at 512 to avoid cache impact
