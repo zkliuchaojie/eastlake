@@ -15,7 +15,7 @@
 #include <uapi/asm-generic/mman-common.h>
 #include <uapi/asm-generic/fcntl.h>
 #include <linux/mman.h>
-
+#include <asm/tlbflush.h>
 /*
  * This micro should be defined in linux/po_metadata.h.
  * Including the trailing NUL, the max length of po is 256.
@@ -45,24 +45,10 @@ struct po_ns_record *rcds['z' - 'a' + 1] = {NULL};
 struct po_ns_record *po_ns_search(const char *str, int strlen)
 {
 	struct po_ns_record *rcd;
-	struct po_desc *desc;
-	struct po_chunk *chunk;
 
 	if (rcds[*str - 'a'] == NULL)
 		return NULL;
 	rcd = rcds[*str - 'a'];
-	desc = (struct po_desc *)phys_to_virt(rcd->desc);
-	pr_info("po_ns_search, rcd: %p", rcd);
-	pr_info("po_ns_search, desc: %p", desc);
-	desc->size = PAGE_SIZE_REDEFINED * 2;
-	desc->flags = O_RDWR;
-	chunk = (struct po_chunk *)kpmalloc(sizeof(*chunk), GFP_KERNEL);
-	chunk->size = desc->size;
-	chunk->start = virt_to_phys(kpmalloc(chunk->size, GFP_KERNEL));
-	chunk->next_pa = NULL;
-	desc->data_pa = (struct po_chunk *)virt_to_phys(chunk);
-
-	pr_info("ok");
 	return rcd;
 }
 
@@ -299,6 +285,7 @@ SYSCALL_DEFINE1(po_unlink, const char __user *, poname)
 	po_ns_delete(kponame, len);
 	kpfree(rcd);
 	kpfree(kponame);
+	pr_info("after curr:");
 	return 0;
 }
 
@@ -404,6 +391,7 @@ SYSCALL_DEFINE6(po_mmap, unsigned long, addr, unsigned long, len, \
 	desc = pos_get(pod);
 	if (!desc)
 		return -EBADF;
+	pr_info("desc->size: %d", desc->size);
 	pr_info("EBADF");
 	/* check len and pgoff */
 	if ((pgoff < 0) || ((PAGE_SIZE_REDEFINED - 1) & pgoff) \
@@ -562,7 +550,7 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 		kpfree(new_chunk);
 		return -ENOMEM;
 	}
-
+	pr_info("po_extend: ");
 	new_chunk->start = virt_to_phys(v_start);
 	new_chunk->size = len;
 	new_chunk->next_pa = NULL;
@@ -608,5 +596,90 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 
 		cnt += PAGE_SIZE_REDEFINED;
 	}
+	desc->size += len;
 	return retval;
+}
+/*
+ * for now, ignore len, and addr must be a virtual address of a chunk.
+ */
+SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
+{
+	struct po_desc *desc;
+	struct po_chunk *prev, *curr;
+	unsigned long cnt;
+	unsigned long address;
+	struct mm_struct *mm = current->mm;
+	pgd_t *pgd;
+	p4d_t *p4d;
+	pud_t *pud;
+	pmd_t *pmd;
+	pte_t *ptep;
+
+	pr_info("po_shrink");
+	desc = pos_get(pod);
+	if (!desc)
+		return -EBADF;
+	/* check addr and len */
+	if ((addr <= 0) || ((PAGE_SIZE_REDEFINED - 1) & addr))
+		return -EINVAL;
+	if ((len <= 0) || ((PAGE_SIZE_REDEFINED - 1) & len))
+		return -EINVAL;
+
+	if (desc->data_pa == NULL)
+		return 0;
+	pr_info("desc->data_pa is not NULL");
+	curr = (struct po_chunk *)phys_to_virt(desc->data_pa);
+	if (addr = phys_to_virt(curr->start)) {
+		desc->data_pa = NULL;
+		pr_info("first chunk");
+		goto unmap_and_free_chunk;
+	}
+
+	prev = curr;
+	curr = prev->next_pa == NULL ? NULL : phys_to_virt(prev->next_pa);
+	while (curr != NULL) {
+		if (addr == phys_to_virt(curr->start)) {
+			prev->next_pa = curr->next_pa;
+			goto unmap_and_free_chunk;
+		}
+		prev = curr;
+		curr = prev->next_pa == NULL ? NULL : phys_to_virt(prev->next_pa);
+	}
+	if (curr == NULL)
+		return 0;
+
+unmap_and_free_chunk:
+	cnt = 0;
+	while (cnt < curr->size) {
+		address = curr->start + cnt + PO_MAP_AREA_START;
+		cnt += PAGE_SIZE_REDEFINED;
+
+		pgd = pgd_offset(mm, address);
+		if (pgd_none_or_clear_bad(pgd))
+			continue;
+		pr_info("pgd");
+		p4d = p4d_offset(pgd, address);
+		if (p4d_none_or_clear_bad(p4d))
+			continue;
+		pr_info("p4d");
+		pud = pud_offset(p4d, address);
+		if (pud_none_or_clear_bad(pud))
+			continue;
+		pr_info("pud");
+		pmd = pmd_offset(pud, address);
+		if (pmd_none_or_clear_bad(pmd))
+			continue;
+		pr_info("pmd");
+		ptep = pte_offset_map(pmd, address);
+		if (pte_none(*ptep))
+			continue;
+		pr_info("pte");
+		pte_clear(mm, address, ptep);
+	}
+	/* the following line does not work, I do not know why */
+	//flush_tlb_mm_range(mm, addr, addr + curr->size, 0);
+	flush_tlb_mm(mm);
+	desc->size -= curr->size;
+	free_chunk(curr);
+	return 0;
 }

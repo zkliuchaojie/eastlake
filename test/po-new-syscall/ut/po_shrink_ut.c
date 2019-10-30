@@ -16,9 +16,9 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 
-TEST(po_mmap, simple_test)
+TEST(po_shrink, simple_test)
 {
-	char poname[] = "m";
+	char poname[] = "x";
 	int pod1;
 	long long retval1;
 	char *c;
@@ -28,13 +28,9 @@ TEST(po_mmap, simple_test)
 
 	c = (char *)syscall(406, pod1, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE);
 	ASSERT_GE((unsigned long)c, 0);
-	c[0] = 'a';
-	//printf("%c\n", c[0]);
-
-	c = (char *)syscall(404, 0, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE, pod1, 0);
-	ASSERT_GE((unsigned long)c, 0);
-	c[0] = 'b';
-	//printf("%c\n", c[0]);
+	
+	retval1 = syscall(407, pod1, c, 4096);
+	ASSERT_EQ(retval1, 0);
 
 	retval1 = syscall(403, pod1, 0);
 	ASSERT_GE(retval1, 0);
@@ -44,14 +40,13 @@ TEST(po_mmap, simple_test)
 }
 
 /*
- * need to be automical.
+ * TODO: make it automatic.
  */
-/*
-TEST(po_mmap, just_can_read_test)
+TEST(po_shrink, can_not_access_after_shrink_test)
 {
-	char poname[] = "m";
+	char poname[] = "x";
 	int pod1;
-	long long retval1, retval2;
+	long long retval1;
 	char *c;
 
 	pod1 = syscall(400, poname);
@@ -59,10 +54,11 @@ TEST(po_mmap, just_can_read_test)
 
 	c = (char *)syscall(406, pod1, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE);
 	ASSERT_GE((unsigned long)c, 0);
+	c[0] = 'x';
 
-	c = (char *)syscall(404, 0, 4096, PROT_READ, MAP_PRIVATE, pod1, 0);
-	ASSERT_GE(retval1, 0);
-	//c[0] = 'a';
+	retval1 = syscall(407, pod1, c, 4096);
+	ASSERT_EQ(retval1, 0);
+	//printf("%c\n", c[0]);
 
 	retval1 = syscall(403, pod1, 0);
 	ASSERT_GE(retval1, 0);
@@ -70,4 +66,3 @@ TEST(po_mmap, just_can_read_test)
 	retval1 = syscall(401, poname, 0);
 	ASSERT_EQ(retval1, 0);
 }
-*/

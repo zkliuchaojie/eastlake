@@ -49,7 +49,7 @@ TEST(po_unlink, busy_test)
 
 TEST(po_unlink, invalid_argument_test)
 {
-	char poname[] = "eastlake/";
+	char poname[] = "u/";
 	int pod;
 
 	pod = syscall(401, poname);
