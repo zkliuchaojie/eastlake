@@ -1116,6 +1116,13 @@ static inline struct zone *page_zone(const struct page *page)
 	return &NODE_DATA(page_to_nid(page))->node_zones[page_zonenum(page)];
 }
 
+#ifdef CONFIG_ZONE_PM_EMU
+static inline struct pm_zone *pt_page_zone(const struct pt_page *pt_page)
+{
+	return &NODE_DATA(pt_page_to_nid(pt_page))->node_pm_zones[ZONE_PM_EMU];
+}
+#endif
+
 static inline pg_data_t *page_pgdat(const struct page *page)
 {
 	return NODE_DATA(page_to_nid(page));

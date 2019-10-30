@@ -745,6 +745,14 @@ static inline void rmv_page_order(struct page *page)
 	set_page_private(page, 0);
 }
 
+#ifdef CONFIG_ZONE_PM_EMU
+static inline void rmv_pt_page_order(struct pt_page *pt_page)
+{
+	// we use MAX_ORDER + 1 to indicate the page is not in the buddy
+	pt_page->private = MAX_ORDER + 1;
+}
+#endif
+
 /*
  * This function checks whether a page is free && is the buddy
  * we can coalesce a page and its buddy if
@@ -785,6 +793,18 @@ static inline int page_is_buddy(struct page *page, struct page *buddy,
 	}
 	return 0;
 }
+
+#ifdef CONFIG_ZONE_PM_EMU
+static inline int pt_page_is_buddy(struct pt_page *pt_page, struct pt_page *pt_buddy,
+								unsigned int order)
+{
+	// we can judge a page in buddy or not based on the private
+	if (pt_buddy->private != MAX_ORDER+1 && pt_buddy->private == order) {
+		return 1;
+	}
+	return 0;
+}
+#endif
 
 /*
  * Freeing function for a buddy system allocator.
@@ -1295,9 +1315,57 @@ static void __free_pages_ok(struct page *page, unsigned int order)
 }
 
 #ifdef CONFIG_ZONE_PM_EMU
-static void __free_pt_pages_ok(struct pt_page *page, unsigned int order)
+static inline unsigned long
+__find_pt_buddy_index(unsigned long page_idx, unsigned int order)
 {
+	return (page_idx ^ (1 << order));
+}
+
+static inline unsigned long
+__find_pt_combined_index(unsigned long page_idx, unsigned int order)
+{
+	return (page_idx & ~(1 << order));
+}
+
+static void __free_pt_pages_ok(struct pt_page *pt_page, unsigned int order)
+{
+	unsigned long flags;
+	struct pm_zone *pm_zone;
+	unsigned long buddy_idx = 0, combinded_idx = 0;
+	unsigned long page_idx;
+	struct pt_page *buddy;	
+	struct pm_super *super;
+
+	pm_zone = pt_page_zone(pt_page);
+	super = pm_zone->super;
+	page_idx = pt_page - pm_zone->super->first_page;
+	local_irq_save(flags);
+	spin_lock(&pm_zone->lock);
 	
+	// free here
+	while (order < MAX_ORDER - 1) {
+		buddy_idx = __find_pt_buddy_index(page_idx, order);
+		buddy = pt_page + (buddy_idx - page_idx);
+		if (!pt_page_is_buddy(pt_page, buddy, order))
+			break;
+		list_del(&buddy->lru);
+		super->pt_free_area[order].nr_free--;
+		
+		// remove the buddy
+		rmv_pt_page_order(buddy);
+		combinded_idx = __find_pt_combined_index(page_idx, order);
+		pt_page = pt_page + (combinded_idx - page_idx);
+		page_idx = combinded_idx;
+		order++;
+	}
+
+	pt_page->private = order;
+	// we can put it to tail later
+	list_add(&pt_page->lru, &super->pt_free_area[order].free_list);
+	super->pt_free_area[order].nr_free++;
+	
+	spin_unlock(&pm_zone->lock);
+	local_irq_restore(flags);	
 }
 #endif
 
@@ -4442,6 +4510,64 @@ out:
 }
 EXPORT_SYMBOL(__alloc_pages_nodemask);
 
+#ifdef CONFIG_ZONE_PM_EMU
+struct pt_page *
+__alloc_pt_pages_nodemask(gpfp_t gpfp_mask, unsigned int order, int preferred_nid,
+							nodemask_t *nodemask)
+{
+	struct pt_page	*pt_page;	
+	//gpfp_t	alloc_mask;
+	struct pm_zone	*pm_zone;
+	struct pm_super	*pm_super;
+	struct pt_free_area *area;
+	unsigned int current_order;
+	unsigned long flags;
+	int low, high;
+	unsigned long size;
+		
+	if (unlikely(order >= MAX_ORDER)) {
+		WARN_ON_ONCE(!(gpfp_mask & __GPFP_NOWARN));
+		return NULL;
+	}
+	
+	// we will alloc from the pm_zone
+	pm_zone = NODE_DATA(preferred_nid)->node_pm_zones + ZONE_PM_EMU;
+	pm_super = pm_zone -> super;
+	
+	pt_page = NULL;
+	spin_lock_irqsave(&pm_zone->lock, flags);	
+	for (current_order = order; current_order < MAX_ORDER; current_order++) {
+		area = pm_super->pt_free_area + current_order;
+		if (list_empty(&area->free_list)) {
+			continue;
+		}
+		
+		// we need to lock here
+		pt_page = list_entry(area->free_list.next, struct pt_page, lru);
+		list_del(&pt_page->lru);
+		rmv_pt_page_order(pt_page);	
+		area->nr_free--;
+		// expand page
+		low = current_order;
+		high = order;
+		size = 1 << high;
+		while (high > low) {
+			area--;
+			high--;
+			size >>= 1;
+			// later we can add to tail, performance first
+			list_add(&pt_page[size].lru, &area->free_list);
+			area->nr_free++;
+			pt_page[size].private = high;
+		}
+	}
+	spin_unlock(&pm_zone->lock);
+	local_irq_restore(flags);
+	return pt_page;
+}
+EXPORT_SYMBOL(__alloc_pt_pages_nodemask);
+#endif
+
 /*
  * Common helper functions. Never use with __GFP_HIGHMEM because the returned
  * address cannot represent highmem pages. Use alloc_pages and then kmap if
@@ -4496,6 +4622,14 @@ void free_pages(unsigned long addr, unsigned int order)
 }
 
 EXPORT_SYMBOL(free_pages);
+
+#ifdef CONFIG_ZONE_PM_EMU
+inline
+void free_pt_pages(struct pt_page *pt_page, unsigned int order)
+{
+	__free_pt_pages(pt_page, order);
+}
+#endif
 
 /*
  * Page Fragment:
@@ -6513,13 +6647,20 @@ void pt_page_init(pg_data_t *pgdat)
 	int nid = pgdat->node_id;
 	// now we only init some parts
 	unsigned int i;
-	for (i = 0; i < super->size; i++) {
-		struct pt_page *pt_page = map + i;
+	struct pt_page *pt_page;
+
+	for (i = 0; i < super->buddy_managed_pages; i++) {
+		pt_page = map + i;
 		pt_page->flags &= ~(NODES_MASK << NODES_PGSHIFT);
 		pt_page->flags |= (nid & NODES_MASK) << NODES_PGSHIFT;
 		atomic_set(&(pt_page)->_mapcount, -1);
-		atomic_set(&(pt_page)->_refcount, 0);
+		atomic_set(&(pt_page)->_refcount, 1);
 		INIT_LIST_HEAD(&pt_page->lru);
+		pt_page->private = MAX_ORDER + 1;
+	}
+	for (i = 0; i < super->buddy_managed_pages; i++) {
+		pt_page = map+1;
+		free_pt_pages(pt_page, 0);
 	}
 }
 
@@ -6550,11 +6691,14 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 			pm_zone->pm_zone_phys_end = ALIGN_DOWN(entry->addr + entry->size, PAGE_SIZE);
 			// the zone_pm_emu is already mapped to kernel virtual space
 			pm_zone->pm_zone_virt_addr = __va(pm_zone->pm_zone_phys_addr);
-			//pm_zone->pm_zone_size = entry->size;
+			// pm_zone->pm_zone_size = entry->size;
 			pm_zone->pm_zone_size = pm_zone->pm_zone_phys_end - pm_zone->pm_zone_phys_addr;
+			// lock init
+			spin_lock_init(&pm_zone->lock);
 			pm_zone->name = pm_zone_names[ZONE_PM_EMU];
 			pgdat->nr_pm_zones = 1;
-			
+			pgdat->node_pt_map = (struct pt_page*)__va(pm_zone->pm_zone_phys_addr + PAGE_SIZE);			
+	
 			// initialization of pm_super, we put the info at the beginning of PM
 			pm_zone->super = (struct pm_super*)pm_zone->pm_zone_virt_addr;
 			super = pm_zone->super;
@@ -6571,10 +6715,14 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 				
 				// node_pt_map is placed from the second page
 				size = ALIGN(super->size * sizeof(struct pt_page), PAGE_SIZE);
-				pgdat->node_pt_map = (struct pt_page*)__va(pm_zone->pm_zone_phys_addr + PAGE_SIZE);
 				
+				super->first_page = pgdat->node_pt_map;	
+				// buddy start page will start at 1 + size
+				super->buddy_start_pfn = (size >> PAGE_SHIFT) + 1;
+				super->buddy_managed_pages = ALIGN_DOWN(super->size - (size>>PAGE_SHIFT) - 1, MAX_ORDER_NR_PAGES);
+			
 				// pt_page init
-				pt_page_init(pgdat);	
+				pt_page_init(pgdat);
 					
 				super->used = (size >> PAGE_SHIFT) + 1;	
 				super->free = super->size - super->used;
@@ -6610,13 +6758,31 @@ void __init print_zone_pm_emu(pg_data_t *pgdat)
 		super->size, super->free, super->used, super->initialized);
 }
 
+inline
+void print_buddy_info(struct pm_super* super)
+{
+	unsigned int i;
+	unsigned long total_pages = 0;
+	pr_info("buddy info:\n");
+	pr_info("buddy_managed_pages:%ld\n", super->buddy_managed_pages);
+	for(i = 0; i < MAX_ORDER; i++) {
+		pr_info("order %d: %ld\n", i, super->pt_free_area[i].nr_free);
+		total_pages += super->pt_free_area[i].nr_free * (2 << i);
+	}
+	pr_info("total_pages:%ld\n", total_pages);
+}
+
 void __init test_and_check(pg_data_t *pgdat)
 {
 	struct pm_zone *pm_zone = pgdat->node_pm_zones + ZONE_PM_EMU;
 	struct pt_page *pt_page = pfn_to_pt_page(pm_zone->start_pfn);
 	unsigned long pfn = pt_page_to_pfn(pgdat->node_pt_map + 10);
 	unsigned long pfn0 = pt_page_to_pfn(pgdat->node_pt_map);
+	struct pm_super *super = pm_zone->super;
 	pr_info("pt_page(pfn 0): %px %px pfn(page0):%ld pfn(page 10): %ld\n", pgdat->node_pt_map, pt_page, pfn0, pfn);
+
+	// check the buddy system work or not
+	print_buddy_info(super);
 }
 
 void __init try_to_access_zone_pm_emu(pg_data_t *pgdat)

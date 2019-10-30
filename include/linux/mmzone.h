@@ -543,6 +543,9 @@ struct pm_super {
 	unsigned long size;
 	unsigned long free;
 	unsigned long used;
+	unsigned long buddy_start_pfn;
+	unsigned long buddy_managed_pages;
+	struct pt_page *first_page;
 	struct pt_free_area pt_free_area[MAX_ORDER];
 	bool initialized;
 };
@@ -554,7 +557,7 @@ struct pm_zone {
 	struct pglist_data  *pm_zone_pgdat;
 	// pm_zone is put in the DRAM
 	// Put super into the PM for persistency 
-	struct pm_super *super;	
+	struct pm_super	*super;	
 
 	/*
 	 * suppose that there are no holes in pm, so the physical address is
@@ -567,7 +570,9 @@ struct pm_zone {
 	void		*pm_zone_virt_addr;
 	unsigned long	pm_zone_size;
 	
-	const char          *name;
+	/* protects free_area */
+	spinlock_t	lock;	
+	const char      *name;
 };
 #endif
 
