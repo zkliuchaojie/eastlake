@@ -4548,8 +4548,8 @@ __alloc_pt_pages_nodemask(gpfp_t gpfp_mask, unsigned int order, int preferred_ni
 		rmv_pt_page_order(pt_page);	
 		area->nr_free--;
 		// expand page
-		low = current_order;
-		high = order;
+		low = order;
+		high = current_order;
 		size = 1 << high;
 		while (high > low) {
 			area--;
@@ -4560,7 +4560,9 @@ __alloc_pt_pages_nodemask(gpfp_t gpfp_mask, unsigned int order, int preferred_ni
 			area->nr_free++;
 			pt_page[size].private = high;
 		}
+		break;
 	}
+	atomic_set(&(pt_page)->_refcount, 1);
 	spin_unlock(&pm_zone->lock);
 	local_irq_restore(flags);
 	return pt_page;
@@ -6659,7 +6661,7 @@ void pt_page_init(pg_data_t *pgdat)
 		pt_page->private = MAX_ORDER + 1;
 	}
 	for (i = 0; i < super->buddy_managed_pages; i++) {
-		pt_page = map+1;
+		pt_page = map + i;
 		free_pt_pages(pt_page, 0);
 	}
 }
@@ -6767,7 +6769,7 @@ void print_buddy_info(struct pm_super* super)
 	pr_info("buddy_managed_pages:%ld\n", super->buddy_managed_pages);
 	for(i = 0; i < MAX_ORDER; i++) {
 		pr_info("order %d: %ld\n", i, super->pt_free_area[i].nr_free);
-		total_pages += super->pt_free_area[i].nr_free * (2 << i);
+		total_pages += super->pt_free_area[i].nr_free * (1 << i);
 	}
 	pr_info("total_pages:%ld\n", total_pages);
 }
@@ -6779,10 +6781,25 @@ void __init test_and_check(pg_data_t *pgdat)
 	unsigned long pfn = pt_page_to_pfn(pgdat->node_pt_map + 10);
 	unsigned long pfn0 = pt_page_to_pfn(pgdat->node_pt_map);
 	struct pm_super *super = pm_zone->super;
+	struct pt_page *alloc_page[10];
+	unsigned int i;
+	gpfp_t gpfp_mask = GPFP_KERNEL;
+	
 	pr_info("pt_page(pfn 0): %px %px pfn(page0):%ld pfn(page 10): %ld\n", pgdat->node_pt_map, pt_page, pfn0, pfn);
 
 	// check the buddy system work or not
 	print_buddy_info(super);
+	
+	// do some alloc and free work to check
+	for (i = 0; i < 10; i++) {
+		alloc_page[i] = alloc_pt_pages_node(0, gpfp_mask, i);
+		pr_info("index: %ld\n", alloc_page[i] - super->first_page);
+		print_buddy_info(super);
+	}
+	for (i = 10; i > 0; i--) {
+		free_pt_pages(alloc_page[i-1], i-1);
+		print_buddy_info(super);
+	}
 }
 
 void __init try_to_access_zone_pm_emu(pg_data_t *pgdat)
