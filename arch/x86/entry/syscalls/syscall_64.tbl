@@ -355,6 +355,8 @@
 405	64	po_munmap		__x64_sys_po_munmap
 406	64	po_extend		__x64_sys_po_extend
 407	64	po_shrink		__x64_sys_po_shrink
+408	64	po_stat			__x64_sys_po_stat
+409	64	po_fstat		__x64_sys_po_fstat
 
 #
 # x32-specific system call numbers start at 512 to avoid cache impact

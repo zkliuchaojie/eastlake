@@ -235,6 +235,14 @@ SYSCALL_DEFINE1(po_unlink, const char __user *, poname)
 	struct po_desc *desc;
 	struct po_chunk *curr, *next;
 	int retval;
+	unsigned long cnt;
+	unsigned long address;
+	struct mm_struct *mm = current->mm;
+	pgd_t *pgd;
+	p4d_t *p4d;
+	pud_t *pud;
+	pmd_t *pmd;
+	pte_t *ptep;
 
 	kponame = kmalloc(MAX_PO_NAME_LENGTH, GFP_KERNEL);
 	if (!kponame)
@@ -274,9 +282,38 @@ SYSCALL_DEFINE1(po_unlink, const char __user *, poname)
 		curr = (struct po_chunk *)phys_to_virt(desc->data_pa);
 		pr_info("curr: %p", curr);
 		while (curr != NULL) {
-			next = NULL;
-			if (curr->next_pa != NULL)
-				next = (struct po_chunk *)phys_to_virt(curr->next_pa);
+			cnt = 0;
+			while (cnt < curr->size) {
+				address = curr->start + cnt + PO_MAP_AREA_START;
+				cnt += PAGE_SIZE_REDEFINED;
+
+				pgd = pgd_offset(mm, address);
+				if (pgd_none_or_clear_bad(pgd))
+					continue;
+				pr_info("pgd");
+				p4d = p4d_offset(pgd, address);
+				if (p4d_none_or_clear_bad(p4d))
+					continue;
+				pr_info("p4d");
+				pud = pud_offset(p4d, address);
+				if (pud_none_or_clear_bad(pud))
+					continue;
+				pr_info("pud");
+				pmd = pmd_offset(pud, address);
+				if (pmd_none_or_clear_bad(pmd))
+					continue;
+				pr_info("pmd");
+				ptep = pte_offset_map(pmd, address);
+				if (pte_none(*ptep))
+					continue;
+				pr_info("pte");
+				pte_clear(mm, address, ptep);
+			}
+			/* the following line does not work, I do not know why */
+			//flush_tlb_mm_range(mm, addr, addr + curr->size, 0);
+			flush_tlb_mm(mm);
+			next = curr->next_pa == NULL ? NULL : \
+				(struct po_chunk *)phys_to_virt(curr->next_pa);
 			free_chunk(curr);
 			curr = next;
 		}
@@ -630,7 +667,7 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 	pr_info("desc->data_pa is not NULL");
 	curr = (struct po_chunk *)phys_to_virt(desc->data_pa);
 	if (addr = phys_to_virt(curr->start)) {
-		desc->data_pa = NULL;
+		desc->data_pa = curr->next_pa;
 		pr_info("first chunk");
 		goto unmap_and_free_chunk;
 	}
@@ -681,5 +718,56 @@ unmap_and_free_chunk:
 	flush_tlb_mm(mm);
 	desc->size -= curr->size;
 	free_chunk(curr);
+	return 0;
+}
+
+SYSCALL_DEFINE2(po_stat, const char __user *, poname, struct po_stat __user *, statbuf)
+{
+	char *kponame;
+	unsigned long len, i;
+	struct po_ns_record *rcd;
+	struct po_desc *desc;
+
+	kponame = kmalloc(MAX_PO_NAME_LENGTH, GFP_KERNEL);
+	if (!kponame)
+		return -ENOMEM;
+	len = strncpy_from_user(kponame, poname, MAX_PO_NAME_LENGTH);
+	if (len < 0) {
+		kpfree(kponame);
+		return len;
+	}
+	if (len == MAX_PO_NAME_LENGTH) {
+		kpfree(kponame);
+		return -ENAMETOOLONG;
+	}
+	for (i = 0; i < len; i++) {
+		if (kponame[i] == '/') {
+			kpfree(kponame);
+			return -EINVAL;
+		}
+	}
+
+	rcd = po_ns_search(kponame, len);
+	if (rcd == NULL)
+		return -ENOENT;
+	desc = (struct po_desc *)phys_to_virt(rcd->desc);
+	statbuf->st_mode = desc->mode;
+	statbuf->st_uid = desc->uid;
+	statbuf->st_gid = desc->gid;
+	statbuf->st_size = desc->size;
+	return 0;
+}
+
+SYSCALL_DEFINE2(po_fstat, unsigned long, pod, struct po_stat __user *, statbuf)
+{
+	struct po_desc *desc;
+
+	desc = pos_get(pod);
+	if (!desc)
+		return -EBADF;
+	statbuf->st_mode = desc->mode;
+	statbuf->st_uid = desc->uid;
+	statbuf->st_gid = desc->gid;
+	statbuf->st_size = desc->size;
 	return 0;
 }

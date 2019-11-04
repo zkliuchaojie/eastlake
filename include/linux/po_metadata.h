@@ -35,6 +35,17 @@ struct po_desc
 	unsigned int flags; // assign, when open or creat
 };
 
+/*
+ * NOTE: we only support 64 bit architectures.
+ * And we will add more states in po_stat structure.
+ */
+struct po_stat {
+	mode_t	st_mode;
+	uid_t	st_uid;
+	gid_t	st_gid;
+	off_t 	st_size;
+};
+
 struct po_ns_record
 {
 	int strlen;

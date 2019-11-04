@@ -46,6 +46,7 @@ struct sembuf;
 struct shmid_ds;
 struct sockaddr;
 struct stat;
+struct po_stat;
 struct stat64;
 struct statfs;
 struct statfs64;
@@ -920,6 +921,8 @@ asmlinkage long sys_po_munmap(unsigned long addr, size_t len);
 asmlinkage long sys_po_extend(unsigned long pod, size_t len, unsigned long prot \
 	unsigned long flags);
 asmlinkage long sys_po_shrink(unsigned long pod, unsigned long addr, size_t len);
+asmlinkage long sys_po_stat(const char __user *poname, struct po_stat __user *statbuf);
+asmlinkage long sys_po_fstat(unsigned long pod, struct po_stat __user *statbuf);
 
 /*
  * Architecture-specific system calls
