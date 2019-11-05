@@ -24,6 +24,73 @@
 #define MAX_PO_NAME_LENGTH	256
 #endif
 
+#ifdef CONFIG_ZONE_PM_EMU
+
+#define pt_page_to_virt(page)	phys_to_virt(pt_page_to_pfn(page)<<PAGE_SHIFT_REDEFINED)
+#define pt_page_to_phys(page)	(pt_page_to_pfn(page)<<PAGE_SHIFT_REDEFINED)
+#define virt_to_pt_page(p)	pfn_to_pt_page((virt_to_phys(p)>>PAGE_SHIFT_REDEFINED))
+#define phys_to_pt_page(phys)	pfn_to_pt_page(phys>>PAGE_SHIFT_REDEFINED)
+
+/*
+ * alloc_pt_pages/free_pt_pages is used to alloc/free AEP space,
+ * and the return value is a virt address of the starting memory space.
+ * Difference with kpmalloc, alloc_pt_pages just alloc space for the
+ * data of persistent object.
+ */
+void *alloc_pt_pages(size_t size, gpfp_t flags)
+{
+	struct pt_page *page;
+	unsigned int order;
+	unsigned long tmp;
+
+	size = ALIGN(size, PAGE_SIZE_REDEFINED);
+	tmp = 1 * PAGE_SIZE_REDEFINED;
+	order = 0;
+	for (; tmp < size; order++)
+		tmp *= 2;
+	page = alloc_pt_pages_node(0, flags, order);
+	if (page == NULL)
+		return NULL;
+	return (void*)pt_page_to_virt(page);
+}
+
+/*
+ * there should be a number, making pow(2, number) equal size.
+ */
+void free_pt_pages(void *p, size_t size)
+{
+	unsigned int order;
+	unsigned long tmp;
+
+	tmp = 1 * PAGE_SIZE_REDEFINED;
+	order = 0;
+	for (; tmp < size; order++)
+		tmp *= 2;
+	free_pt_pages(virt_to_pt_page(p), order);
+}
+
+/*
+ * for now, kpmalloc/kpfree is used to alloc/free AEP space not bigger than 4KB.
+ */
+void *kpmalloc(size_t size, gpfp_t flags)
+{
+	struct pt_page *page;
+
+	if (size > PAGE_SIZE_REDEFINED)
+		return NULL;
+	page = alloc_pt_pages_node(0, flags, 0);
+	if (page == NULL)
+		return NULL;
+	return (void*)pt_page_to_virt(page);
+}
+
+void kpfree(void *objp)
+{
+	free_pt_pages(virt_to_pt_page(objp), 0);
+}
+
+#else
+
 /*
  * We define kpmalloc(kpfree) as kmalloc(kfree), and it is
  * used to allocate space from persistent memory.
@@ -31,6 +98,8 @@
  */
 #define kpmalloc	kmalloc
 #define kpfree		kfree
+
+#endif // CONFIG_ZONE_PM_EMU
 
 /*
  * Syscalls about persistent object depend on metadata module,
@@ -79,16 +148,13 @@ struct po_ns_record *po_ns_delete(const char *str, int strlen)
 void free_chunk(struct po_chunk *chunk)
 {
 	/*
-	 * First we should free pages allocated from pmm(lifan).
-	 * There should be a mechanism to transfer start(a
-	 * physical address) to the corresponding instance of
-	 * struct pt_page(may be by a global variable).
+	 * free pages.
 	 */
-
-	/*
-	 * TODO: free pages.
-	 */
+#ifdef CONFIG_ZONE_PM_EMU
+	free_pt_pages(phys_to_virt(chunk->start), chunk->size);
+#else
 	kpfree(phys_to_virt(chunk->start));
+#endif
 	/* free po_chunk */
 	kpfree(chunk);
 }
@@ -164,7 +230,7 @@ void exit_pos(struct task_struct *tsk)
 	if (pos) {
 		tsk->pos = NULL;
 		if (atomic_dec_and_test(&pos->count))
-			kpfree(pos);
+			kfree(pos);
 	}
 }
 
@@ -188,16 +254,16 @@ SYSCALL_DEFINE2(po_creat, const char __user *, poname, umode_t, mode)
 		return -ENOMEM;
 	len = strncpy_from_user(kponame, poname, MAX_PO_NAME_LENGTH);
 	if (len < 0) {
-		kpfree(kponame);
+		kfree(kponame);
 		return len;
 	}
 	if (len == MAX_PO_NAME_LENGTH) {
-		kpfree(kponame);
+		kfree(kponame);
 		return -ENAMETOOLONG;
 	}
 	for (i = 0; i < len; i++) {
 		if (kponame[i] == '/') {
-			kpfree(kponame);
+			kfree(kponame);
 			return -EINVAL;
 		}
 	}
@@ -218,12 +284,12 @@ SYSCALL_DEFINE2(po_creat, const char __user *, poname, umode_t, mode)
 	retval = pos_insert(desc);
 	if (retval < 0) {
 		po_ns_delete(kponame, len);
-		kpfree(kponame);
+		kfree(kponame);
 		kpfree(desc);
 		return retval;
 	}
 
-	kpfree(kponame);
+	kfree(kponame);
 	return retval;
 }
 
@@ -249,16 +315,16 @@ SYSCALL_DEFINE1(po_unlink, const char __user *, poname)
 		return -ENOMEM;
 	len = strncpy_from_user(kponame, poname, MAX_PO_NAME_LENGTH);
 	if (len < 0) {
-		kpfree(kponame);
+		kfree(kponame);
 		return len;
 	}
 	if (len == MAX_PO_NAME_LENGTH) {
-		kpfree(kponame);
+		kfree(kponame);
 		return -ENAMETOOLONG;
 	}
 	for (i = 0; i < len; i++) {
 		if (kponame[i] == '/') {
-			kpfree(kponame);
+			kfree(kponame);
 			return -EINVAL;
 		}
 	}
@@ -267,14 +333,14 @@ SYSCALL_DEFINE1(po_unlink, const char __user *, poname)
 	rcd = po_ns_search(kponame, len);
 	pr_info("rcd: %p", rcd);
 	if (rcd == NULL) {
-		kpfree(kponame);
+		kfree(kponame);
 		return -ENOENT;
 	}
 	pr_info("rcd->desc: %p", rcd->desc);
 	desc = (struct po_desc *)phys_to_virt(rcd->desc);
 	pr_info("desc: %p", desc);
 	if (pos_is_open(desc) == true) {
-		kpfree(kponame);
+		kfree(kponame);
 		return -EBUSY;
 	}
 	if (desc->size != 0) {
@@ -321,7 +387,7 @@ SYSCALL_DEFINE1(po_unlink, const char __user *, poname)
 
 	po_ns_delete(kponame, len);
 	kpfree(rcd);
-	kpfree(kponame);
+	kfree(kponame);
 	pr_info("after curr:");
 	return 0;
 }
@@ -339,16 +405,16 @@ SYSCALL_DEFINE3(po_open, const char __user *, poname, int, flags, umode_t, mode)
 		return -ENOMEM;
 	len = strncpy_from_user(kponame, poname, MAX_PO_NAME_LENGTH);
 	if (len < 0) {
-		kpfree(kponame);
+		kfree(kponame);
 		return len;
 	}
 	if (len == MAX_PO_NAME_LENGTH) {
-		kpfree(kponame);
+		kfree(kponame);
 		return -ENAMETOOLONG;
 	}
 	for (i = 0; i < len; i++) {
 		if (kponame[i] == '/') {
-			kpfree(kponame);
+			kfree(kponame);
 			return -EINVAL;
 		}
 	}
@@ -358,7 +424,7 @@ SYSCALL_DEFINE3(po_open, const char __user *, poname, int, flags, umode_t, mode)
 		if (flags & O_CREAT) {
 			rcd = po_ns_insert(kponame, len);
 			if (rcd == NULL) {
-				kpfree(kponame);
+				kfree(kponame);
 				return -ENOENT;
 			}
 			desc = kpmalloc(sizeof(*desc), GFP_KERNEL);
@@ -370,7 +436,7 @@ SYSCALL_DEFINE3(po_open, const char __user *, poname, int, flags, umode_t, mode)
 			desc->flags = flags;
 			rcd->desc = (struct po_desc *)virt_to_phys(desc);
 		} else {
-			kpfree(kponame);
+			kfree(kponame);
 			return -ENOENT;
 		}
 	} else {
@@ -381,12 +447,12 @@ SYSCALL_DEFINE3(po_open, const char __user *, poname, int, flags, umode_t, mode)
 	retval = pos_insert(desc);
 	if (retval < 0) {
 		po_ns_delete(kponame, len);
-		kpfree(kponame);
+		kfree(kponame);
 		kpfree(desc);
 		return retval;
 	}
 
-	kpfree(kponame);
+	kfree(kponame);
 	return retval;
 }
 
@@ -582,7 +648,11 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 	new_chunk = (struct po_chunk *)kpmalloc(sizeof(*new_chunk), GFP_KERNEL);
 	if (!new_chunk)
 		return -ENOMEM;
+#ifdef CONFIG_ZONE_PM_EMU
+	v_start = alloc_pt_pages(len, GPFP_KERNEL);
+#else
 	v_start = kpmalloc(len, GFP_KERNEL);
+#endif
 	if (!v_start) {
 		kpfree(new_chunk);
 		return -ENOMEM;
@@ -733,16 +803,16 @@ SYSCALL_DEFINE2(po_stat, const char __user *, poname, struct po_stat __user *, s
 		return -ENOMEM;
 	len = strncpy_from_user(kponame, poname, MAX_PO_NAME_LENGTH);
 	if (len < 0) {
-		kpfree(kponame);
+		kfree(kponame);
 		return len;
 	}
 	if (len == MAX_PO_NAME_LENGTH) {
-		kpfree(kponame);
+		kfree(kponame);
 		return -ENAMETOOLONG;
 	}
 	for (i = 0; i < len; i++) {
 		if (kponame[i] == '/') {
-			kpfree(kponame);
+			kfree(kponame);
 			return -EINVAL;
 		}
 	}
