@@ -156,6 +156,9 @@ typedef u32 dma_addr_t;
 #endif
 
 typedef unsigned __bitwise gfp_t;
+#ifdef CONFIG_ZONE_PM_EMU
+typedef unsigned __bitwise gpfp_t;
+#endif
 typedef unsigned __bitwise slab_flags_t;
 typedef unsigned __bitwise fmode_t;
 

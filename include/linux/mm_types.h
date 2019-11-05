@@ -206,6 +206,46 @@ struct page {
 #endif
 } _struct_page_alignment;
 
+#ifdef CONFIG_ZONE_PM_EMU
+/*
+ * 9/10/2019 by Tony
+ * Now, persistent page is only used for persistent usage.
+ * The object in struct pt_page are organized in double word blocks in 
+ * order to allow us to use atomic double word operations on portions
+ * of struct pt_page.
+ * If we use PM as stroage, then mmap may be useless.
+*/
+struct pt_page {
+	/* First double word block */
+	unsigned long flags;	/* Atomic flags */
+	struct address_space * mapping;	/* If low bit clear, points to
+					 * inode address_space, or NULL.
+					 * If page mapped as anonymous
+					 * memory, low bit is set, and
+					 * it points to anon_vma object:
+					 * see PAGE_MAPPING_ANON below.
+					 */
+	/* Second double word */
+	pgoff_t index;	/* Our offset within mapping */
+	atomic_t _mapcount;	/* Count of ptes mapped in mms */
+	atomic_t _refcount;	/* Usage count. */
+
+	/* Third double word block */
+	struct list_head lru;	/* Pageout list (only the first page need to be inserted) */
+
+	/* Remaninder is not double word aligned */
+	unsigned long private;	/* Mapping-private opaque data:
+				 * usually used for buffer_heads
+				 * if PagePrivate set; used for
+				 * swp_entry_t if PageSwapCache;
+				 * indicates order in the buddy
+				 * system if PG_buddy is set.
+				 */
+} _struct_page_alignment;
+#endif
+
+
+
 #define PAGE_FRAG_CACHE_MAX_SIZE	__ALIGN_MASK(32768, ~PAGE_MASK)
 #define PAGE_FRAG_CACHE_MAX_ORDER	get_order(PAGE_FRAG_CACHE_MAX_SIZE)
 
