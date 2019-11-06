@@ -37,7 +37,7 @@
  * Difference with kpmalloc, alloc_pt_pages just alloc space for the
  * data of persistent object.
  */
-void *alloc_pt_pages(size_t size, gpfp_t flags)
+void *po_alloc_pt_pages(size_t size, gpfp_t flags)
 {
 	struct pt_page *page;
 	unsigned int order;
@@ -57,7 +57,7 @@ void *alloc_pt_pages(size_t size, gpfp_t flags)
 /*
  * there should be a number, making pow(2, number) equal size.
  */
-void free_pt_pages(void *p, size_t size)
+void po_free_pt_pages(void *p, size_t size)
 {
 	unsigned int order;
 	unsigned long tmp;
@@ -66,7 +66,7 @@ void free_pt_pages(void *p, size_t size)
 	order = 0;
 	for (; tmp < size; order++)
 		tmp *= 2;
-	free_pt_pages(virt_to_pt_page(p), order);
+	__free_pt_pages(virt_to_pt_page(p), order);
 }
 
 /*
@@ -81,12 +81,14 @@ void *kpmalloc(size_t size, gpfp_t flags)
 	page = alloc_pt_pages_node(0, flags, 0);
 	if (page == NULL)
 		return NULL;
+	pr_info("page: %#lx", (unsigned long)page);
+	pr_info("pt_page_to_pfn: %lld", pt_page_to_pfn(page));
 	return (void*)pt_page_to_virt(page);
 }
 
 void kpfree(void *objp)
 {
-	free_pt_pages(virt_to_pt_page(objp), 0);
+	__free_pt_pages(virt_to_pt_page(objp), 0);
 }
 
 #else
@@ -151,7 +153,7 @@ void free_chunk(struct po_chunk *chunk)
 	 * free pages.
 	 */
 #ifdef CONFIG_ZONE_PM_EMU
-	free_pt_pages(phys_to_virt(chunk->start), chunk->size);
+	po_free_pt_pages(phys_to_virt(chunk->start), chunk->size);
 #else
 	kpfree(phys_to_virt(chunk->start));
 #endif
@@ -649,7 +651,7 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 	if (!new_chunk)
 		return -ENOMEM;
 #ifdef CONFIG_ZONE_PM_EMU
-	v_start = alloc_pt_pages(len, GPFP_KERNEL);
+	v_start = po_alloc_pt_pages(len, GPFP_KERNEL);
 #else
 	v_start = kpmalloc(len, GFP_KERNEL);
 #endif
