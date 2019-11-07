@@ -6625,8 +6625,8 @@ void __init free_area_init_node(int nid, unsigned long *zones_size,
 	register_zone_pm_emu(pgdat);
 	/* for debug */
 	print_zone_pm_emu(pgdat);
-	test_and_check(pgdat);
-	//try_to_access_zone_pm_emu(pgdat);
+	if (pgdat->nr_pm_zones != 0)
+		test_and_check(pgdat);
 #endif
 
 }
