@@ -4533,7 +4533,10 @@ __alloc_pt_pages_nodemask(gpfp_t gpfp_mask, unsigned int order, int preferred_ni
 	// we will alloc from the pm_zone
 	pm_zone = NODE_DATA(preferred_nid)->node_pm_zones + ZONE_PM_EMU;
 	pm_super = pm_zone -> super;
-	
+	if (pm_super == NULL) {
+		return NULL;
+	}
+		
 	pt_page = NULL;
 	spin_lock_irqsave(&pm_zone->lock, flags);	
 	for (current_order = order; current_order < MAX_ORDER; current_order++) {
@@ -6622,8 +6625,8 @@ void __init free_area_init_node(int nid, unsigned long *zones_size,
 	register_zone_pm_emu(pgdat);
 	/* for debug */
 	print_zone_pm_emu(pgdat);
-	test_and_check(pgdat);
-	//try_to_access_zone_pm_emu(pgdat);
+	if (pgdat->nr_pm_zones != 0)
+		test_and_check(pgdat);
 #endif
 
 }
@@ -6682,7 +6685,7 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 		entry = e820_table->entries + i;
 		/* for simple, we just manage only one PM zone for now */
 		if ((entry->type == E820_TYPE_PRAM || entry->type == E820_TYPE_PMEM) && \
-			( (entry->addr>>PAGE_SHIFT) >= pgdat->node_start_pfn && ((entry->addr + entry->size) >> PAGE_SHIFT) <= pgdat_end_pfn(pgdat)) ) {
+			( e820_range_to_nid(entry->addr) == pgdat->node_id )) {
 			pr_info("strat to register pm_zone\n");
 			pm_zone = pgdat->node_pm_zones + ZONE_PM_EMU;
 			pm_zone->pm_zone_pgdat = pgdat;
@@ -6704,7 +6707,9 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 			// initialization of pm_super, we put the info at the beginning of PM
 			pm_zone->super = (struct pm_super*)pm_zone->pm_zone_virt_addr;
 			super = pm_zone->super;
+			pr_info("PM_MAGIC\n");
 			if(super->magic != PM_MAGIC || super->initialized != true) {
+				pr_info("No_PM_MAGIC, start to init\n");
 				// we need to do some init work here
 				super->size = pm_zone->pm_zone_size >> PAGE_SHIFT;
 				// the first page is reserved for some global info
