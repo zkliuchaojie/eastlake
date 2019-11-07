@@ -4634,6 +4634,8 @@ void free_pt_pages(struct pt_page *pt_page, unsigned int order)
 {
 	__free_pt_pages(pt_page, order);
 }
+
+EXPORT_SYMBOL(free_pt_pages);
 #endif
 
 /*
