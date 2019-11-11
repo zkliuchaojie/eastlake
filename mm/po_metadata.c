@@ -19,7 +19,8 @@
 //#define GFP_KERNEL      (__GFP_IO | __GFP_FS) //依赖难以解决，删掉第一个试试
 //#include<linux/slab.h>
 
-#define debug 6
+#define debug 0
+#define debugburst 1
 #define BURST_LIMIT 4
 unsigned long long po_super;
 void *po_alloc(int size)
@@ -74,6 +75,10 @@ struct po_ns_record *po_ns_search_container(struct po_ns_container *container,in
 		{
 			if(debug)	printf("strlen is OK\n");
 			if(debug) printf("strlen is really OK\nstr+depth:%s\nrc->str:%s\nstr_len-depth:%d\n",str+depth,rc->str,str_len-depth);
+			if(str_len-depth==0&&rc->strlen==0)
+			{
+				return rc;
+			}
 			if(memcmp(str+depth,rc->str,str_len-depth)==0)
 			{
 				if(debug) printf("successfully returned\n");
@@ -106,7 +111,7 @@ void po_insert_record(struct po_ns_trie_node *prev_trie_node,int prev_index,stru
 
 struct po_ns_record * po_ns_search(const char* str,int strlen){
 	struct po_super *ps;
-	struct po_ns_trie_node *node;
+	struct po_ns_trie_node *node,*prev_node;
 	struct po_ns_container *cont;
 	struct po_ns_record *rc;
 	int depth;
@@ -115,7 +120,8 @@ struct po_ns_record * po_ns_search(const char* str,int strlen){
 	depth=1;
 	ps=po_get_super();
 	node=ps->trie_root;
-	while(depth<strlen+1)
+	prev_node=NULL;
+	while(depth<strlen+2)
 	{
 		index=(int)str[depth-1];
 		if(debug) printf("%c\n",index);
@@ -123,6 +129,7 @@ struct po_ns_record * po_ns_search(const char* str,int strlen){
 		{
 			depth++;
 			if(debug) printf("node depth:%d\n",node->depth);
+			prev_node=node;
 			node=node->ptrs[index];
 			if(node==NULL)
 				return NULL;
@@ -133,7 +140,7 @@ struct po_ns_record * po_ns_search(const char* str,int strlen){
 			return po_ns_search_container((struct po_ns_container *)(node),depth-1,str,strlen);
 		}
 	}
-	return node->ptrs[0];
+	return prev_node->ptrs[0];
 }
 struct po_ns_record * po_ns_insert(const char* str,int strlen){
 	struct po_super *ps;
@@ -238,7 +245,7 @@ int po_ns_need_burst(struct po_ns_container *container){
 }
 
 void po_ns_burst(struct po_ns_trie_node *prev_trie_node,int prev_index){
-	if(debug) printf("burst start!\n\n\n");
+	if(debugburst) printf("burst start!\n\n\n");
 	struct po_ns_trie_node *new_node;
 	struct po_ns_container *cont,*newcont;
 	struct po_ns_record *curr_record,*free_record;
@@ -259,7 +266,7 @@ void po_ns_burst(struct po_ns_trie_node *prev_trie_node,int prev_index){
 		if(debug) printf("%dth busrt record\n",i);
 		new_record=po_alloc(sizeof(struct po_ns_record));
 		new_record->strlen=curr_record->strlen-1;
-		if(new_record->strlen==0)
+		if(0)//new_record->strlen==0)
 		{
 			new_record->str=NULL;
 			new_record->next=NULL;
@@ -275,7 +282,7 @@ void po_ns_burst(struct po_ns_trie_node *prev_trie_node,int prev_index){
 				newstr[i]=curr_record->str[i+1];
 			}
 			new_record->str=newstr;
-			index=(int)newstr[0];
+			index=(int)curr_record->str[0];
 			if(new_node->ptrs[index]==NULL)
 			{
 				if(debug)printf("new index: %d******************\n",index);
@@ -288,10 +295,10 @@ void po_ns_burst(struct po_ns_trie_node *prev_trie_node,int prev_index){
 			else
 			{
 				//Nove 7 错误在这里
-				//new_record->next=((struct po_ns_container *)(new_node->ptrs[index]))->record_first;
-				po_insert_record(new_node,index,new_record);
-				//((struct po_ns_container*)(new_node->ptrs[index]))->record_first=new_record;
-				//((struct po_ns_container*)(new_node->ptrs[index]))->cnt_limit++;
+				new_record->next=((struct po_ns_container *)(new_node->ptrs[index]))->record_first;
+		//		po_insert_record(new_node,index,new_record);
+				((struct po_ns_container*)(new_node->ptrs[index]))->record_first=new_record;
+				((struct po_ns_container*)(new_node->ptrs[index]))->cnt_limit++;
 
 
 			}
@@ -306,6 +313,8 @@ void po_ns_burst(struct po_ns_trie_node *prev_trie_node,int prev_index){
 	prev_trie_node->ptrs[prev_index]=new_node;
 	if(debug)printf("new node depth:%d,prev index:%d\n",new_node->depth,prev_index);
 }
+#define num 20
+#define ind 2
 int main()
 {
 	po_super_init();
@@ -314,24 +323,32 @@ int main()
 	printf("%d\n",p->po_count);
 	int i;
 	char s[4]="abcd";
-	for(i=0;i<9;i++)
+	for(i=0;i<num;i++)
 	{
 
 		if(debug)printf("=====%dth insert %s=====\n",i,s);
 		struct po_ns_record * p1=po_ns_insert(s,4);
-		s[0]++;
-		printf("P1:\t%p\n",p1);
+		s[ind]++;
+		printf("P1:\t%p\t%d\n",p1,i);
 		if(debug)printf("=====%dth insert finished=====\n",i);
 	}
+	
 	char s2[4]="abcd";
-	for(i=0;i<9;i++)
+	printf("::::::::::::::::::::::::::::::::::::::::\n");
+	for(i=0;i<num;i++)
 	{
 		if(debug)printf("======%d search %s=====\n",i,s2);
 		struct po_ns_record * p2=po_ns_search(s2,4);
-		s2[0]++;
-		printf("P2:\t%p\n",p2);
+		s2[ind]++;
+		printf("P2:\t%p\t%d\n",p2,i);
 		if(debug)printf("======%d search finished\n",i);
 	}
+	
+
+		struct po_ns_record * p1=po_ns_insert("a",1);
+		printf("P1:\t%p\n",p1);
+		struct po_ns_record * p2=po_ns_search("a",1);
+		printf("P2:\t%p\n",p2);
 	return 0;
 }
 
