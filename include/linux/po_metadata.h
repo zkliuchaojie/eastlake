@@ -1,8 +1,12 @@
 /*
  * Management of metadata and namespace for persistent object
  * Author Chen
- * */
-//#include <linux/list.h> //vm_list
+ */
+
+#ifndef _LINUX_PO_METADATA_H_
+#define _LINUX_PO_METADATA_H_
+
+#include <linux/list.h> //vm_list
 #include <linux/types.h> //uid gid
 
 #define PO_NS_LENGTH 128		//ASCII 0~128
@@ -28,6 +32,18 @@ struct po_desc
 	uid_t	uid;//用户id
 	gid_t	gid;//组id
 	umode_t mode;
+	unsigned int flags; // assign, when open or creat
+};
+
+/*
+ * NOTE: we only support 64 bit architectures.
+ * And we will add more states in po_stat structure.
+ */
+struct po_stat {
+	mode_t	st_mode;
+	uid_t	st_uid;
+	gid_t	st_gid;
+	off_t 	st_size;
 };
 
 struct po_ns_record
@@ -53,3 +69,5 @@ struct po_ns_trie_node
 extern struct po_ns_record * po_ns_search(const char* str,int strlen); //extren 关键字有的内核源码加了，有的地方没加，暂时加上吧
 extern struct po_ns_record * po_ns_insert(const char* str,int strlen);
 extern struct po_ns_record * po_ns_delete(const char* str,int strlen);
+
+#endif

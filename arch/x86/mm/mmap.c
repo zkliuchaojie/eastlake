@@ -33,6 +33,10 @@
 #include <linux/compat.h>
 #include <asm/elf.h>
 
+#ifndef _LINUX_PO_MAP_H
+#include <linux/po_map.h>
+#endif
+
 #include "physaddr.h"
 
 struct va_alignment __read_mostly va_align = {
@@ -113,7 +117,8 @@ static unsigned long mmap_base(unsigned long rnd, unsigned long task_size,
 	else if (gap > gap_max)
 		gap = gap_max;
 
-	return PAGE_ALIGN(task_size - gap - rnd);
+	return PAGE_ALIGN(task_size - gap - rnd -
+		(PO_MAP_AREA_SIZE + MAX_GAP + MAX_RANDOM));
 }
 
 static unsigned long mmap_legacy_base(unsigned long rnd,

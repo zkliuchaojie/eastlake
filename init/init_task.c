@@ -104,6 +104,7 @@ struct task_struct init_task
 	.comm		= INIT_TASK_COMM,
 	.thread		= INIT_THREAD,
 	.fs		= &init_fs,
+	.pos		= &init_pos,
 	.files		= &init_files,
 	.signal		= &init_signals,
 	.sighand	= &init_sighand,

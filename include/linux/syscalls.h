@@ -46,6 +46,7 @@ struct sembuf;
 struct shmid_ds;
 struct sockaddr;
 struct stat;
+struct po_stat;
 struct stat64;
 struct statfs;
 struct statfs64;
@@ -906,6 +907,22 @@ asmlinkage long sys_statx(int dfd, const char __user *path, unsigned flags,
 			  unsigned mask, struct statx __user *buffer);
 asmlinkage long sys_rseq(struct rseq __user *rseq, uint32_t rseq_len,
 			 int flags, uint32_t sig);
+
+/*
+ * Syscalls for persistent object, and they are just available for x86_64 for now.
+ */
+asmlinkage long sys_po_creat(const char __user *poname, umode_t mode);
+asmlinkage long sys_po_unlink(const char __user *poname);
+asmlinkage long sys_po_open(const char __user *poname, int flags, umode_t mode);
+asmlinkage long sys_po_close(unsigned int pod);
+asmlinkage long sys_po_mmap(unsigned long addr, unsigned long len, unsigned long prot \
+	unsigned long flags, unsigned long pod, unsigned long pgoff);
+asmlinkage long sys_po_munmap(unsigned long addr, size_t len);
+asmlinkage long sys_po_extend(unsigned long pod, size_t len, unsigned long prot \
+	unsigned long flags);
+asmlinkage long sys_po_shrink(unsigned long pod, unsigned long addr, size_t len);
+asmlinkage long sys_po_stat(const char __user *poname, struct po_stat __user *statbuf);
+asmlinkage long sys_po_fstat(unsigned long pod, struct po_stat __user *statbuf);
 
 /*
  * Architecture-specific system calls
