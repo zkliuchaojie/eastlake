@@ -70,4 +70,9 @@ extern struct po_ns_record * po_ns_search(const char* str,int strlen); //extren 
 extern struct po_ns_record * po_ns_insert(const char* str,int strlen);
 extern struct po_ns_record * po_ns_delete(const char* str,int strlen);
 
+int po_ns_need_burst(struct po_ns_container *container);
+struct po_ns_record *po_ns_burst(struct po_ns_trie_node *prev_trie_node,int prev_index);
+struct po_ns_record *po_ns_delete_record(struct po_ns_container *container, \
+	int depth, const char *str, int str_length);
+void po_super_init(struct po_super *po_super);
 #endif

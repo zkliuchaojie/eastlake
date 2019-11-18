@@ -19,6 +19,7 @@
 #include <linux/page-flags-layout.h>
 #include <linux/atomic.h>
 #include <asm/page.h>
+#include <linux/po_metadata.h>
 
 /* Free memory management - zoned buddy allocator.  */
 #ifndef CONFIG_FORCE_MAX_ZONEORDER
@@ -548,6 +549,8 @@ struct pm_super {
 	struct pt_page *first_page;
 	struct pt_free_area pt_free_area[MAX_ORDER];
 	bool initialized;
+	// po_super is placed in node0
+	struct po_super po_super;
 };
 
 struct pm_zone {

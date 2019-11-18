@@ -1,320 +1,404 @@
 /*
  * Author Chen
  */
+#include <linux/slab.h>
+#include <linux/po_map.h>
+#include <linux/syscalls.h>
 #include <linux/po_metadata.h>
-//include<linux/po_alloc.h> 上层提供的
-//#define unsign_to_p(a) (a) //指针和物理地址具体转换还不清楚
-//#define p_to_unsign(a) (a)
-//#include<linux/slab.h>
+#include <linux/cred.h>
+#include <asm-generic/io.h>
+#include <uapi/asm-generic/errno.h>
+#include <uapi/asm-generic/errno-base.h>
+#include <linux/podtable.h>
+#include <linux/sched.h>
+#include <linux/po_map.h>
+#include <uapi/asm-generic/mman-common.h>
+#include <uapi/asm-generic/fcntl.h>
+#include <linux/mman.h>
+#include <asm/tlbflush.h>
 
-//GFP_KERNEL 依赖暂时无法解决，直接摘出来
-//#define ___GFP_IO               0x40u
-//#define ___GFP_FS               0x80u
+/*
+ * the following codes is the same with mm/po.c,
+ * please refactor it in the future.
+ */
+#ifdef CONFIG_ZONE_PM_EMU
 
-//#define __GFP_IO               0x40u
-//#define __GFP_FS               0x80u
-//#define __GFP_RECLAIM ((__force gfp_t)(___GFP_DIRECT_RECLAIM|___GFP_KS    WAPD_RECLAIM))
-//#define GFP_KERNEL      (__GFP_RECLAIM | __GFP_IO | __GFP_FS)
+#define pt_page_to_virt(page)	phys_to_virt(pt_page_to_pfn(page)<<PAGE_SHIFT_REDEFINED)
+#define pt_page_to_phys(page)	(pt_page_to_pfn(page)<<PAGE_SHIFT_REDEFINED)
+#define virt_to_pt_page(p)	pfn_to_pt_page((virt_to_phys(p)>>PAGE_SHIFT_REDEFINED))
+#define phys_to_pt_page(phys)	pfn_to_pt_page(phys>>PAGE_SHIFT_REDEFINED)
 
-//#define GFP_KERNEL      (__GFP_IO | __GFP_FS) //依赖难以解决，删掉第一个试试
-//#include<linux/slab.h>
+/*
+ * for now, kpmalloc/kpfree is used to alloc/free AEP space not bigger than 4KB.
+ */
+static void *kpmalloc(size_t size, gpfp_t flags)
+{
+	struct pt_page *page;
 
-#define debug 0
+	if (size > PAGE_SIZE_REDEFINED)
+		return NULL;
+	page = alloc_pt_pages_node(0, flags, 0);
+	if (page == NULL)
+		return NULL;
+	pr_info("page: %#lx", (unsigned long)page);
+	pr_info("pt_page_to_pfn: %ld", pt_page_to_pfn(page));
+	return (void*)pt_page_to_virt(page);
+}
+
+static void kpfree(void *objp)
+{
+	__free_pt_pages(virt_to_pt_page(objp), 0);
+}
+
+#else
+
+/*
+ * We define kpmalloc(kpfree) as kmalloc(kfree), and it is
+ * used to allocate space from persistent memory.
+ * In the future, someone(yes, someone) will implement them.
+ */
+#define kpmalloc	kmalloc
+#define kpfree		kfree
+
+#endif // CONFIG_ZONE_PM_EMU
+
+#define debug 1
 #define debugburst 1
 #define BURST_LIMIT 4
-unsigned long long po_super;
+
+/*
 void *po_alloc(int size)
+	//return kmalloc(size,GFP_KERNEL);//依赖难以解决，暂时用malloc吧
+
 {
 	//return kmalloc(size,GFP_KERNEL);//依赖难以解决，暂时用malloc吧
 	return malloc(size);//,GFP_KERNEL);
 }
+*/
 
-
-
-
-void po_super_init()
+void po_super_init(struct po_super *po_super)
 {
-	struct po_super  *ps;
 	struct po_ns_trie_node *root;
 	int i;
 
-	ps=po_alloc(sizeof(struct po_super));
-	po_super=ps;
-	root=po_alloc(sizeof(struct po_ns_trie_node));
-	for(i=0;i<PO_NS_LENGTH;i++)
-	{
-		root->ptrs[i]=NULL;
-	}
-	root->depth=1;
-	ps->trie_root=root;
-	ps->trie_node_count=1;
-	ps->container_count=0;
-	ps->po_count=0;
-}
-struct po_super* po_get_super() //以后应该上层提供，暂时先这样写
-{
-	return po_super;
+	root = kpmalloc(sizeof(struct po_ns_trie_node), GFP_KERNEL);
+	for (i = 0; i < PO_NS_LENGTH; i++)
+		root->ptrs[i] = NULL;
+	root->depth = 1;
+	po_super->trie_root = root;
+	po_super->trie_node_count = 1;
+	po_super->container_count = 0;
+	po_super->po_count = 0;
+	pr_info("%#lx", po_super);
 }
 
-struct po_ns_record *po_ns_search_container(struct po_ns_container *container,int depth,char *str,int str_len){
-	if(debug) printf("search container depth:%d\n",depth);
+struct po_super* po_get_super(void) //以后应该上层提供，暂时先这样写
+{
+	struct pm_zone 	*pm_zone;
+	struct pm_super	*pm_super;
+
+	pm_zone = NODE_DATA(0)->node_pm_zones + ZONE_PM_EMU;
+	pm_super = pm_zone->super;
+	pr_info("%#lx", &(pm_super->po_super));
+	return &(pm_super->po_super);
+}
+
+struct po_ns_record *po_ns_search_container(struct po_ns_container *cont, \
+	int depth, const char *str, int strlen)
+{
 	struct po_ns_record *rc;
-	int i;
-	rc=container->record_first;
-	//上次工作到这里，bug没找到
-	while(rc!=NULL)
-	{
-		if(debug) printf("record in container first letter:%s,rc.strlen:%d,str_len:%d,depth:%d.\n",rc->str,rc->strlen,str_len,depth);
-		if(rc->strlen!=str_len-depth)
-		{
-			if(debug) printf("strlen is NOT OK");
-			rc=rc->next;
-			continue;
-		}
-		else
-		{
-			if(debug)	printf("strlen is OK\n");
-			if(debug) printf("strlen is really OK\nstr+depth:%s\nrc->str:%s\nstr_len-depth:%d\n",str+depth,rc->str,str_len-depth);
-			if(str_len-depth==0&&rc->strlen==0)
-			{
+
+	rc = cont->record_first;
+	while (rc != NULL) {
+		pr_info("rc->str: %s", rc->str);
+		if ((rc->strlen == strlen - depth) && \
+			 (memcmp(str+depth, rc->str, strlen-depth)==0))
 				return rc;
-			}
-			if(memcmp(str+depth,rc->str,str_len-depth)==0)
-			{
-				if(debug) printf("successfully returned\n");
-				return rc;
-			}
-			else 
-			{
-				if(debug) printf("NOT OK\n");
-				rc=rc->next;
-				continue;
-			}
-		}
+		pr_info("rc: %#lx", rc);
+		rc = rc->next;
 	}
-	
 	return NULL;
 }
 
-void po_insert_record(struct po_ns_trie_node *prev_trie_node,int prev_index,struct po_ns_record *record) {
-	struct po_ns_container *container;
-	container=prev_trie_node->ptrs[prev_index];
-	record->next=container->record_first;
-	container->record_first=record;
+struct po_ns_record *po_insert_record(struct po_ns_trie_node *prev_trie_node, \
+	int prev_index, struct po_ns_record *record)
+{
+	struct po_ns_container *cont;
+
+	pr_info("po insert record");
+	cont = (struct po_ns_container *)(prev_trie_node->ptrs[prev_index]);
+	if (cont->record_first != NULL)
+		pr_info("str: %s", cont->record_first->str);
+	record->next = cont->record_first;
+	cont->record_first = record;
 	//之后补充burst判定
-	container->cnt_limit++;
-	if(po_ns_need_burst(container))
-	{
-		po_ns_burst(prev_trie_node,prev_index);
-	}
+	cont->cnt_limit++;
+	pr_info("%d, cont: %#lx", cont->cnt_limit, cont);
+	if(po_ns_need_burst(cont))
+		return po_ns_burst(prev_trie_node, prev_index);
+	return record;
 }
 
-struct po_ns_record * po_ns_search(const char* str,int strlen){
+struct po_ns_record * po_ns_search(const char* str, int strlen)
+{
 	struct po_super *ps;
-	struct po_ns_trie_node *node,*prev_node;
+	struct po_ns_trie_node *prev, *curr;
+	int depth;
+	int index;
+
+	pr_info("po ns search, str: %s", str);
+	depth = 1;
+	ps = po_get_super();
+	prev = NULL;
+	curr = ps->trie_root;
+	while(depth < strlen + 2) {
+		if (debug)
+			pr_info("depth change:%d\n",depth);
+		if (debug)
+			pr_info("%c\n",index);
+		if(depth == (int)(curr->depth)) {
+			if (debug)
+				pr_info("node depth:%d\n", curr->depth);
+			prev = curr;
+			index = (int)str[depth-1];
+			pr_info("prev: %#lx, index: %d", prev, index);
+			curr = curr->ptrs[index];
+			pr_info("%#lx", curr);
+			if (curr == NULL)
+				return NULL;
+			depth++;
+		} else {
+			if (debug)
+				pr_info("search container");
+			return po_ns_search_container((struct po_ns_container *)(curr), \
+				depth - 1, str, strlen);
+		}
+	}
+	return (struct po_ns_record *)prev->ptrs[0];
+}
+
+struct po_ns_record *po_ns_insert(const char* str, int strlen)
+{
+	struct po_super *ps;
+	int depth;
+	int index, strindex;
+	struct po_ns_trie_node *prev, *curr, *root;
 	struct po_ns_container *cont;
 	struct po_ns_record *rc;
-	int depth;
-	int index;
 
-	depth=1;
-	ps=po_get_super();
-	node=ps->trie_root;
-	prev_node=NULL;
-	while(depth<strlen+2)
-	{
-		index=(int)str[depth-1];
-		if(debug) printf("%c\n",index);
-		if(depth==(int)(node->depth))
-		{
-			depth++;
-			if(debug) printf("node depth:%d\n",node->depth);
-			prev_node=node;
-			node=node->ptrs[index];
-			if(node==NULL)
-				return NULL;
-			continue;
-		}
-		else
-		{
-			return po_ns_search_container((struct po_ns_container *)(node),depth-1,str,strlen);
-		}
-	}
-	return prev_node->ptrs[0];
-}
-struct po_ns_record * po_ns_insert(const char* str,int strlen){
-	struct po_super *ps;
-	int depth;
-	int index;
-	struct po_ns_trie_node *prev_trie_node,*trie_node,*root;
-	struct po_ns_record *rec;
-	ps=po_get_super();
-	root=ps->trie_root;
-	depth=1;
-	prev_trie_node=NULL;
-	trie_node=root;
-	while(depth<=strlen)
-	{
-		if(debug) printf("depth change:%d\n",depth);
-		index=(int)str[depth-1];
-		prev_trie_node=trie_node;
-		trie_node=trie_node->ptrs[index];
-		if(trie_node==NULL)
-		{
-			//中间是空的，新建节点
-			struct po_ns_container *cont=po_alloc(sizeof(struct po_ns_container));
-			struct po_ns_record *rc=po_alloc(sizeof(struct po_ns_record));
-			rc->strlen=strlen-depth;
-			rc->str=po_alloc(rc->strlen);
-			rc->next=NULL;
-			//用mmcpy应该快一些，暂时先用for循环，也有可能编译器已经优化的一样了
-			int strindex;
-			char *stmp=rc->str;
-			for(strindex=depth;strindex<strlen;strindex++)
-			{
+	pr_info("po ns insert: %s", str);
 
-				(*stmp)=str[strindex];
-				if(debug) printf("record letter:%c\n",*stmp);
-				stmp++;
+	ps = po_get_super();
+	root = ps->trie_root;
+	depth = 1;
+	prev = NULL;
+	curr = root;
+	while (depth < strlen + 1) {
+		if (debug)
+			pr_info("depth change:%d\n",depth);
+		index = (int)str[depth-1];
+		prev = curr;
+		curr = curr->ptrs[index];
+		pr_info("index: %d, %#lx, %#lx", index, prev, curr);
+		if (curr == NULL) {
+			cont = kpmalloc(sizeof(struct po_ns_container), GFP_KERNEL);
+			rc = kpmalloc(sizeof(struct po_ns_record), GFP_KERNEL);
+			rc->strlen = strlen - depth;
+			if (rc->strlen != 0) {
+				rc->str = kpmalloc(rc->strlen, GFP_KERNEL);
+				for(strindex=depth; strindex<strlen; strindex++)
+					rc->str[strindex-depth] = str[strindex];
+			} else {
+				rc->str = NULL;
 			}
-			cont->record_first=rc;
-			prev_trie_node->ptrs[index]=cont;
+			pr_info("%d", rc->strlen);
+			rc->next = NULL;
+			cont->record_first = rc;
+			pr_info("prev: %#lx, index: %d", prev, index);
+			cont->cnt_limit = 1;
+			prev->ptrs[index]=(struct po_ns_trie_node *)cont;
 			return rc;
 		}
-		if(trie_node->depth!=depth+1)
-		{
-			//是个容器,搜容器，有返回，没新建
-			if(po_ns_search_container((struct po_ns_container*)trie_node,prev_trie_node->depth,str,strlen)==NULL)
-			{
-				struct po_ns_record *rc=po_alloc(sizeof(struct po_ns_record));
-				
-				rc->strlen=strlen-depth;
-				rc->str=po_alloc(rc->strlen);
-				//用mmcpy应该快一些，暂时先用for循环，也有可能编译器已经优化的一样了
-				int strindex;
-				char *stmp=rc->str;
-				for(strindex=depth;strindex<=strlen;strindex++)
-				{
-					(*stmp)=str[strindex];
-					if(debug) printf("record letter:%c\n",*stmp);
-					stmp++;
+		if (curr->depth != depth+1) {
+			// means it is a container
+			if(po_ns_search_container((struct po_ns_container*)curr, \
+				prev->depth, str, strlen) == NULL) {
+				rc = kpmalloc(sizeof(struct po_ns_record), GFP_KERNEL);
+				rc->desc = NULL;
+				rc->strlen = strlen-depth;
+				if (rc->strlen != 0) {
+					rc->str = kpmalloc(rc->strlen, GFP_KERNEL);
+					for(strindex=depth; strindex<strlen; strindex++)
+						rc->str[strindex-depth] = str[strindex];
+				} else {
+					rc->str = NULL;
 				}
 				rc->next=NULL;
-				po_insert_record(prev_trie_node,index,rc);
-				return rc;
+				pr_info("container: %#lx", prev->ptrs[index]);
+				return po_insert_record(prev, index, rc);
 			}
-			else
+			else {
 				return NULL;
+			}
 		}
 		depth++;
 	}
 	//走到这里是trie_node中第一个元素的逻辑
-	if(trie_node->ptrs[0]==NULL)
-	{
-		struct po_ns_record *rc=po_alloc(sizeof(struct po_ns_record));
-
-		rc->strlen=0;
-		rc->next=NULL;
-		trie_node->ptrs[0]=rc;
+	if (curr->ptrs[0] == NULL) {
+		rc = kpmalloc(sizeof(struct po_ns_record), GFP_KERNEL);
+		rc->strlen = 0;
+		rc->next = NULL;
+		curr->ptrs[0] = (struct po_ns_trie_node *)rc;
 		return rc;
-	}
-	else
-	{
+	} else {
 		//第一个元素已经存在
 		return NULL;
 	}
-	
-
-
-}
-struct po_ns_record * po_ns_delete(const char* str,int strlen){
-
 }
 
+/*
+ * we do not free po_ns_trie_node or po_ns_container,
+ * please implement it in the future.
+ */
+struct po_ns_record * po_ns_delete(const char* str, int strlen)
+{
+	struct po_super 	*ps;
+	struct po_ns_trie_node 	*prev, *curr;
+	struct po_ns_record	*retval = NULL;
+	int	depth;
+	int 	index;
 
-struct po_ns_record *po_ns_delete_record(struct po_ns_container *container,int depth,const char *str,int str_length){
+	pr_info("po ns delete, str: %s, strlen: %d", str, strlen);
 
+	ps = po_get_super();
+	curr = ps->trie_root;
+	prev = NULL;
+	depth = 1;
+	while (depth < strlen + 2) {
+		pr_info("depth: %d", depth);
+		if (depth == (int)(curr->depth)) {
+			prev = curr;
+			index = (int)str[depth-1];
+			curr = curr->ptrs[index];
+			if (curr == NULL)
+				return retval;
+			depth++;
+		} else {
+			return po_ns_delete_record( \
+				(struct po_ns_container *)(curr), depth-1, str, strlen);
+		}
+	}
+	if (prev->ptrs[0] != NULL) {
+		retval = (struct po_ns_record *)prev->ptrs[0];
+		prev->ptrs[0] = NULL;
+	}
+	return retval;
 }
 
-int po_ns_need_burst(struct po_ns_container *container){
+
+struct po_ns_record *po_ns_delete_record(struct po_ns_container *container, \
+	int depth, const char *str, int strlen)
+{
+	struct po_ns_record *prev, *curr;
+
+	prev = NULL;
+	curr = container->record_first;
+	while (curr != NULL) {
+		if ((curr->strlen == strlen - depth) && \
+			(memcmp(str+depth, curr->str, strlen-depth)==0)) {
+			if (curr->strlen != 0)
+				kpfree(curr->str);
+			if (prev == NULL)
+				container->record_first = curr->next;
+			else
+				prev->next = curr->next;
+			container->cnt_limit--;
+			return curr;
+		}
+		prev = curr;
+		curr = curr->next;
+	}
+	return NULL;
+}
+
+int po_ns_need_burst(struct po_ns_container *cont)
+{
 	//测试用的参数
-	if(container->cnt_limit>BURST_LIMIT)
+	if(cont->cnt_limit > BURST_LIMIT)
 		return 1;
 	else
 		return 0;//暂时
 }
 
-void po_ns_burst(struct po_ns_trie_node *prev_trie_node,int prev_index){
-	if(debugburst) printf("burst start!\n\n\n");
+struct po_ns_record *po_ns_burst(struct po_ns_trie_node *prev_trie_node, int prev_index)
+{
 	struct po_ns_trie_node *new_node;
-	struct po_ns_container *cont,*newcont;
-	struct po_ns_record *curr_record,*free_record;
-	struct po_ns_record *new_record;
-	char *newstr;
+	struct po_ns_container *cont, *newcont;
+	struct po_ns_record *curr_record, *free_record;
+	struct po_ns_record *new_record, *retval = NULL;
 	int i;
 	int index;
-	cont=prev_trie_node->ptrs[prev_index];
-	new_node=po_alloc(sizeof(struct po_ns_trie_node));
-	new_node->depth=prev_trie_node->depth+1;
-	for(i=0;i<PO_NS_LENGTH;i++)
-	{
-		new_node->ptrs[i]=NULL;
-	}	
-	curr_record=cont->record_first;
-	while(curr_record!=NULL)
-	{
-		if(debug) printf("%dth busrt record\n",i);
-		new_record=po_alloc(sizeof(struct po_ns_record));
-		new_record->strlen=curr_record->strlen-1;
-		if(0)//new_record->strlen==0)
-		{
-			new_record->str=NULL;
-			new_record->next=NULL;
-			new_node->ptrs[0]=new_record;
-		}
-		else
-		{
-			//新申请字符串
-			newstr=po_alloc(new_record->strlen);
-			for(i=0;i<new_record->strlen;i++)
-			{
-	//if(debug)printf("@@@@@@@@@@@@@@@@@@@@@@@\n");
-				newstr[i]=curr_record->str[i+1];
-			}
-			new_record->str=newstr;
-			index=(int)curr_record->str[0];
-			if(new_node->ptrs[index]==NULL)
-			{
-				if(debug)printf("new index: %d******************\n",index);
-				newcont=po_alloc(sizeof(struct po_ns_container));
-				newcont->cnt_limit=1;
-				newcont->record_first=new_record;
-				new_record->next=NULL;
-				new_node->ptrs[index]=newcont;
-			}
-			else
-			{
-				//Nove 7 错误在这里
-				new_record->next=((struct po_ns_container *)(new_node->ptrs[index]))->record_first;
-		//		po_insert_record(new_node,index,new_record);
-				((struct po_ns_container*)(new_node->ptrs[index]))->record_first=new_record;
-				((struct po_ns_container*)(new_node->ptrs[index]))->cnt_limit++;
 
+	pr_info("burst");
 
+	cont = (struct po_ns_container *)prev_trie_node->ptrs[prev_index];
+	new_node = kpmalloc(sizeof(struct po_ns_trie_node), GFP_KERNEL);
+	new_node->depth = prev_trie_node->depth + 1;
+	for (i = 0; i < PO_NS_LENGTH; i++)
+		new_node->ptrs[i] = NULL;
+	curr_record = cont->record_first;
+	while (curr_record != NULL) {
+		pr_info("curr_record->str: %s, %d", curr_record->str, curr_record->strlen);
+		new_record = kpmalloc(sizeof(struct po_ns_record), GFP_KERNEL);
+		new_record->desc = curr_record->desc;
+		pr_info("new_record: %#lx, new_record->desc: %#lx", new_record, new_record->desc);
+		/* yes, return the first record */
+		if (retval == NULL)
+			retval = new_record;
+		new_record->next = NULL;
+		if (curr_record->strlen == 0) {
+			new_record->strlen = 0;
+			new_record->str = NULL;
+			new_record->next = NULL;
+			new_node->ptrs[0] = (struct po_ns_trie_node *)new_record;
+		} else {
+			new_record->strlen = curr_record->strlen - 1;
+			if (new_record->strlen != 0) {
+				new_record->str = kpmalloc(new_record->strlen, GFP_KERNEL);
+				for (i=0; i<new_record->strlen; i++)
+					new_record->str[i] = curr_record->str[i+1];
+			} else {
+				pr_info("new_record->strlen == 0");
+				new_record->str = NULL;
 			}
-
+			index = (int)curr_record->str[0];
+			if (new_node->ptrs[index] == NULL) {
+				pr_info("index: %c", curr_record->str[0]);
+				newcont = kpmalloc(sizeof(struct po_ns_container), GFP_KERNEL);
+				newcont->cnt_limit = 1;
+				newcont->record_first = new_record;
+				new_node->ptrs[index] = (struct po_ns_trie_node *)newcont;
+				pr_info("po ns burst, new_node: %#lx, newcont: %#lx", new_node, newcont);
+			} else {
+				cont = (struct po_ns_container *)(new_node->ptrs[index]);
+				new_record->next = cont->record_first;
+				cont->record_first = new_record;
+				cont->cnt_limit++;
+			}
 		}
 		free_record=curr_record;	
 		curr_record=curr_record->next;
-		free(free_record->str);
-		free(free_record);
+		if(free_record->strlen != 0)
+			kpfree(free_record->str);
+		kpfree(free_record);
 	}
-	free(prev_trie_node->ptrs[prev_index]);
+	kpfree(prev_trie_node->ptrs[prev_index]);
 	prev_trie_node->ptrs[prev_index]=new_node;
-	if(debug)printf("new node depth:%d,prev index:%d\n",new_node->depth,prev_index);
+	return retval;
 }
 #define num 20
 #define ind 2
+/*
 int main()
 {
 	po_super_init();
@@ -351,4 +435,4 @@ int main()
 		printf("P2:\t%p\n",p2);
 	return 0;
 }
-
+*/

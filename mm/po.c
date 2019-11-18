@@ -111,8 +111,9 @@ void kpfree(void *objp)
  * assume that the lenght of poname is 1 and all ponames consists
  * of character.
  */
-struct po_ns_record *rcds['z' - 'a' + 1] = {NULL};
 
+/*
+struct po_ns_record *rcds['z' - 'a' + 1] = {NULL};
 struct po_ns_record *po_ns_search(const char *str, int strlen)
 {
 	struct po_ns_record *rcd;
@@ -146,6 +147,7 @@ struct po_ns_record *po_ns_delete(const char *str, int strlen)
 	rcds[*str - 'a'] = NULL;
 	return rcd;
 }
+*/
 
 void free_chunk(struct po_chunk *chunk)
 {
@@ -251,6 +253,7 @@ SYSCALL_DEFINE2(po_creat, const char __user *, poname, umode_t, mode)
 	struct po_desc *desc;
 	int retval;
 
+	pr_info("po creat: %s", poname);
 	kponame = kmalloc(MAX_PO_NAME_LENGTH, GFP_KERNEL);
 	if (!kponame)
 		return -ENOMEM;
@@ -283,8 +286,11 @@ SYSCALL_DEFINE2(po_creat, const char __user *, poname, umode_t, mode)
 	desc->flags = O_CREAT|O_RDWR;
 	rcd->desc = (struct po_desc *)virt_to_phys(desc);
 
+	pr_info("rcd->desc: %#lx", rcd->desc);
+
 	retval = pos_insert(desc);
 	if (retval < 0) {
+		pr_info("retval less than 0");
 		po_ns_delete(kponame, len);
 		kfree(kponame);
 		kpfree(desc);
@@ -345,6 +351,7 @@ SYSCALL_DEFINE1(po_unlink, const char __user *, poname)
 		kfree(kponame);
 		return -EBUSY;
 	}
+	pr_info("pos is open");
 	if (desc->size != 0) {
 		pr_info("desc->data_pa: %p", desc->data_pa);
 		curr = (struct po_chunk *)phys_to_virt(desc->data_pa);
@@ -422,6 +429,7 @@ SYSCALL_DEFINE3(po_open, const char __user *, poname, int, flags, umode_t, mode)
 	}
 
 	rcd = po_ns_search(kponame, len);
+	pr_info("rcd: %#lx", rcd);
 	if (rcd == NULL) {
 		if (flags & O_CREAT) {
 			rcd = po_ns_insert(kponame, len);
@@ -443,7 +451,9 @@ SYSCALL_DEFINE3(po_open, const char __user *, poname, int, flags, umode_t, mode)
 		}
 	} else {
 		desc = (struct po_desc *)phys_to_virt(rcd->desc);
+		pr_info("phys desc: %#lx, desc: %#lx", rcd->desc, desc);
 		desc->flags = flags;
+		pr_info("nothing");
 	}
 
 	retval = pos_insert(desc);
