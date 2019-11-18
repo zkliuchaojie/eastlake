@@ -66,6 +66,7 @@
 #include <linux/ftrace.h>
 #include <linux/lockdep.h>
 #include <linux/nmi.h>
+#include <linux/po_metadata.h>
 
 #include <asm/sections.h>
 #include <asm/tlbflush.h>
@@ -6708,7 +6709,7 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 			pm_zone->super = (struct pm_super*)pm_zone->pm_zone_virt_addr;
 			super = pm_zone->super;
 			pr_info("PM_MAGIC\n");
-			if(super->magic != PM_MAGIC || super->initialized != true) {
+			//if(super->magic != PM_MAGIC || super->initialized != true) {
 				pr_info("No_PM_MAGIC, start to init\n");
 				// we need to do some init work here
 				super->size = pm_zone->pm_zone_size >> PAGE_SHIFT;
@@ -6735,8 +6736,10 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 				super->free = super->size - super->used;
 			
 				super->initialized = true;
-				super->magic = PM_MAGIC;	
-			}
+				super->magic = PM_MAGIC;
+				if(e820_range_to_nid(entry->addr) == 0)
+					po_super_init(&(super->po_super));
+			//}
 			return;
 		}
 	}
