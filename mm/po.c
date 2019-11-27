@@ -748,7 +748,7 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 		return 0;
 	pr_info("desc->data_pa is not NULL");
 	curr = (struct po_chunk *)phys_to_virt(desc->data_pa);
-	if (addr = phys_to_virt(curr->start)) {
+	if (addr == curr->start + PO_MAP_AREA_START) {
 		desc->data_pa = curr->next_pa;
 		pr_info("first chunk");
 		goto unmap_and_free_chunk;
@@ -757,7 +757,7 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 	prev = curr;
 	curr = prev->next_pa == NULL ? NULL : phys_to_virt(prev->next_pa);
 	while (curr != NULL) {
-		if (addr == phys_to_virt(curr->start)) {
+		if (addr == curr->start + PO_MAP_AREA_START) {
 			prev->next_pa = curr->next_pa;
 			goto unmap_and_free_chunk;
 		}
