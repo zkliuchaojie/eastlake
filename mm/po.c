@@ -253,7 +253,7 @@ SYSCALL_DEFINE2(po_creat, const char __user *, poname, umode_t, mode)
 	struct po_desc *desc;
 	int retval;
 
-	pr_info("po creat: %s", poname);
+	pr_info("po creat");
 	kponame = kmalloc(MAX_PO_NAME_LENGTH, GFP_KERNEL);
 	if (!kponame)
 		return -ENOMEM;
