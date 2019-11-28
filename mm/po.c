@@ -809,6 +809,7 @@ SYSCALL_DEFINE2(po_stat, const char __user *, poname, struct po_stat __user *, s
 	unsigned long len, i;
 	struct po_ns_record *rcd;
 	struct po_desc *desc;
+	struct po_stat *tmp;
 
 	kponame = kmalloc(MAX_PO_NAME_LENGTH, GFP_KERNEL);
 	if (!kponame)
@@ -828,28 +829,48 @@ SYSCALL_DEFINE2(po_stat, const char __user *, poname, struct po_stat __user *, s
 			return -EINVAL;
 		}
 	}
+	/* check statbuf */
+	if (!access_ok(VERIFY_WRITE, statbuf, sizeof(struct po_stat))) {
+		kfree(kponame);
+		return -EFAULT;
+	}
 
 	rcd = po_ns_search(kponame, len);
+	kfree(kponame);
 	if (rcd == NULL)
 		return -ENOENT;
 	desc = (struct po_desc *)phys_to_virt(rcd->desc);
-	statbuf->st_mode = desc->mode;
-	statbuf->st_uid = desc->uid;
-	statbuf->st_gid = desc->gid;
-	statbuf->st_size = desc->size;
+	tmp = kmalloc(sizeof(struct po_stat), GFP_KERNEL);
+	if (!tmp)
+		return -ENOMEM;
+	tmp->st_mode = desc->mode;
+	tmp->st_uid = desc->uid;
+	tmp->st_gid = desc->gid;
+	tmp->st_size = desc->size;
+	copy_to_user(statbuf, tmp, sizeof(struct po_stat));
+	kfree(tmp);
 	return 0;
 }
 
 SYSCALL_DEFINE2(po_fstat, unsigned long, pod, struct po_stat __user *, statbuf)
 {
 	struct po_desc *desc;
+	struct po_stat *tmp;
 
+	/* check statbuf */
+	if (!access_ok(VERIFY_WRITE, statbuf, sizeof(struct po_stat)))
+		return -EFAULT;
 	desc = pos_get(pod);
 	if (!desc)
 		return -EBADF;
-	statbuf->st_mode = desc->mode;
-	statbuf->st_uid = desc->uid;
-	statbuf->st_gid = desc->gid;
-	statbuf->st_size = desc->size;
+	tmp = kmalloc(sizeof(struct po_stat), GFP_KERNEL);
+	if (!tmp)
+		return -ENOMEM;
+	tmp->st_mode = desc->mode;
+	tmp->st_uid = desc->uid;
+	tmp->st_gid = desc->gid;
+	tmp->st_size = desc->size;
+	copy_to_user(statbuf, tmp, sizeof(struct po_stat));
+	kfree(tmp);
 	return 0;
 }
