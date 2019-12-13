@@ -20,8 +20,10 @@
 #include <linux/mm_types.h>
 
 #include <asm/thread_info.h>
+#include <linux/podtable.h>
 
 extern struct files_struct init_files;
+extern struct pos_struct init_pos;
 extern struct fs_struct init_fs;
 extern struct nsproxy init_nsproxy;
 extern struct group_info init_groups;

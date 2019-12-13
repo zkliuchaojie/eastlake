@@ -19,6 +19,7 @@
 #include <linux/page-flags-layout.h>
 #include <linux/atomic.h>
 #include <asm/page.h>
+#include <linux/po_metadata.h>
 
 /* Free memory management - zoned buddy allocator.  */
 #ifndef CONFIG_FORCE_MAX_ZONEORDER
@@ -97,6 +98,13 @@ struct free_area {
 	struct list_head	free_list[MIGRATE_TYPES];
 	unsigned long		nr_free;
 };
+
+#ifdef CONFIG_ZONE_PM_EMU
+struct pt_free_area {
+	struct list_head	free_list;
+	unsigned long		nr_free;
+};
+#endif
 
 struct pglist_data;
 
@@ -524,21 +532,50 @@ struct zone {
 
 
 #ifdef CONFIG_ZONE_PM_EMU
+/* 
+ * like the suber block in filesystem
+ * contains some global info
+*/
+// MAGIC NUM eastlake
+#define PM_MAGIC (0x656173746c616b65)
+
+struct pm_super {
+	uint64_t magic;
+	unsigned long size;
+	unsigned long free;
+	unsigned long used;
+	unsigned long buddy_start_pfn;
+	unsigned long buddy_managed_pages;
+	struct pt_page *first_page;
+	struct pt_free_area pt_free_area[MAX_ORDER];
+	bool initialized;
+	// po_super is placed in node0
+	struct po_super po_super;
+};
+
 struct pm_zone {
 #ifdef CONFIG_NUMA
 	int node;
 #endif
 	struct pglist_data  *pm_zone_pgdat;
+	// pm_zone is put in the DRAM
+	// Put super into the PM for persistency 
+	struct pm_super	*super;	
 
 	/*
 	 * suppose that there are no holes in pm, so the physical address is
 	 * (pm_zone_phys_addr)-(pm_zone_phys_addr+pm_zone_size-1), and the virtual
 	 * address is (pm_zone_virt_addr)-(pm_zone_virt_addr+pm_zone_size).
 	 */
-	phys_addr_t         pm_zone_phys_addr;
-	void                *pm_zone_virt_addr;
-	unsigned long       pm_zone_size;
-	const char          *name;
+	phys_addr_t	pm_zone_phys_addr;
+	phys_addr_t	pm_zone_phys_end;
+	unsigned long	start_pfn;
+	void		*pm_zone_virt_addr;
+	unsigned long	pm_zone_size;
+	
+	/* protects free_area */
+	spinlock_t	lock;	
+	const char      *name;
 };
 #endif
 
@@ -664,6 +701,8 @@ typedef struct pglist_data {
 	struct pm_zone node_pm_zones[MAX_NR_PM_ZONES];
 	/* for now, nr_pm_zones is 0 or 1 */
 	int nr_pm_zones;
+	/* it will point to an area in PM */
+	struct pt_page *node_pt_map;
 #endif
 
 #ifdef CONFIG_FLAT_NODE_MEM_MAP	/* means !SPARSEMEM */
@@ -1140,6 +1179,9 @@ static inline unsigned long section_nr_to_pfn(unsigned long sec)
 #define SECTION_ALIGN_DOWN(pfn)	((pfn) & PAGE_SECTION_MASK)
 
 struct page;
+#ifdef ZONE_PM_EMU
+struct pt_page;
+#endif
 struct page_ext;
 struct mem_section {
 	/*

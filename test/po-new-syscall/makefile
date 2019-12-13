@@ -11,16 +11,17 @@ STDIR = st
 
 include $(ROOTDIR)/test/test-framework/makefile
 include ut/makefile
-include mt/makefile
-include mmt/makefile
-include st/makefile
+#include mt/makefile
+#//include mmt/makefile
+#include st/makefile
 
 CC = gcc
 LD = gcc
 AR = ar
 
 # Flags passed to the C++ compiler.
-CFLAGS += -g -Wall -Wno-unused -Wno-sign-compare -Wextra -pthread -I. -I$(ROOTDIR) -ansi
+CFLAGS += -g -pthread -I. -std=gnu89
+CFLAGS += -I$(ROOTDIR)
 ARFLAGS = crv
 
 run-all: run-ut run-mt run-mmt run-st

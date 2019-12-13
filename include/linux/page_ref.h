@@ -143,6 +143,14 @@ static inline int page_ref_dec_and_test(struct page *page)
 	return ret;
 }
 
+#ifdef CONFIG_ZONE_PM_EMU
+static inline int pt_page_ref_dec_and_test(struct pt_page *pt_page)
+{
+	int ret = atomic_dec_and_test(&pt_page->_refcount);
+	return ret;
+}
+#endif
+
 static inline int page_ref_dec_return(struct page *page)
 {
 	int ret = atomic_dec_return(&page->_refcount);

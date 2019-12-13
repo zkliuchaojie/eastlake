@@ -18,6 +18,11 @@
 #define arch_pfn_to_nid(pfn)	pfn_to_nid(pfn)
 #endif
 
+#ifdef CONFIG_ZONE_PM_EMU
+#define arch_local_pt_page_offset(pfn, nid)     \
+        ((pfn) - NODE_DATA(nid)->node_pm_zones[ZONE_PM_EMU].start_pfn)
+#endif
+
 #ifndef arch_local_page_offset
 #define arch_local_page_offset(pfn, nid)	\
 	((pfn) - NODE_DATA(nid)->node_start_pfn)
@@ -28,11 +33,19 @@
 /*
  * supports 3 memory models.
  */
+
 #if defined(CONFIG_FLATMEM)
 
 #define __pfn_to_page(pfn)	(mem_map + ((pfn) - ARCH_PFN_OFFSET))
 #define __page_to_pfn(page)	((unsigned long)((page) - mem_map) + \
 				 ARCH_PFN_OFFSET)
+
+#ifdef CONFIG_ZONE_PM_EMU
+#define __pfn_to_pt_page(pfn)      ((NODE_DATA(0)->node_pt_map) + ((pfn) - NODE_DATA(0)->node_pm_zones[ZONE_PM_EMU].start_pfn))
+#define __pt_page_to_pfn(page)     ((unsigned long)((page) - (NODE_DATA(0)->node_pt_map)) + \
+                                 NODE_DATA(0)->node_pm_zones[ZONE_PM_EMU].start_pfn)
+#endif
+
 #elif defined(CONFIG_DISCONTIGMEM)
 
 #define __pfn_to_page(pfn)			\
@@ -48,11 +61,33 @@
 	 __pgdat->node_start_pfn;					\
 })
 
+#ifdef CONFIG_ZONE_PM_EMU
+#define __pfn_to_pt_page(pfn)                   \
+({      unsigned long __pfn = (pfn);            \
+        unsigned long __nid = arch_pfn_to_nid(__pfn);  \
+        NODE_DATA(__nid)->node_pt_map + arch_local_pt_page_offset(__pfn, __nid);\
+})
+
+#define __pt_page_to_pfn(pg)                                            \
+({      struct pt_page *__pg = (pg);                                    \
+        struct pglist_data *__pgdat = NODE_DATA(pt_page_to_nid(__pg));  \
+        (unsigned long)(__pg - __pgdat->node_pt_map) +                  \
+         __pgdat->node_pm_zones[ZONE_PM_EMU].start_pfn;                                 \
+})
+#endif
+
 #elif defined(CONFIG_SPARSEMEM_VMEMMAP)
 
 /* memmap is virtually contiguous.  */
 #define __pfn_to_page(pfn)	(vmemmap + (pfn))
 #define __page_to_pfn(page)	(unsigned long)((page) - vmemmap)
+
+/* do not support */
+#ifdef CONFIG_ZONE_PM_EMU
+#define __pfn_to_pt_page(pfn)      ((NODE_DATA(0)->node_pt_map) + ((pfn) - NODE_DATA(0)->node_pm_zones[ZONE_PM_EMU].start_pfn))
+#define __pt_page_to_pfn(page)     ((unsigned long)((page) - (NODE_DATA(0)->node_pt_map)) + \
+                                 NODE_DATA(0)->node_pm_zones[ZONE_PM_EMU].start_pfn)
+#endif
 
 #elif defined(CONFIG_SPARSEMEM)
 /*
@@ -70,6 +105,12 @@
 	struct mem_section *__sec = __pfn_to_section(__pfn);	\
 	__section_mem_map_addr(__sec) + __pfn;		\
 })
+
+#ifdef CONFIG_ZONE_PM_EMU
+#define __pfn_to_pt_page(pfn)      ((NODE_DATA(0)->node_pt_map) + ((pfn) - NODE_DATA(0)->node_pm_zones[ZONE_PM_EMU].start_pfn))
+#define __pt_page_to_pfn(page)     ((unsigned long)((page) - (NODE_DATA(0)->node_pt_map)) + \
+                                 NODE_DATA(0)->node_pm_zones[ZONE_PM_EMU].start_pfn)
+#endif
 #endif /* CONFIG_FLATMEM/DISCONTIGMEM/SPARSEMEM */
 
 /*
@@ -80,6 +121,11 @@
 
 #define page_to_pfn __page_to_pfn
 #define pfn_to_page __pfn_to_page
+
+#ifdef CONFIG_ZONE_PM_EMU
+#define pfn_to_pt_page  __pfn_to_pt_page
+#define pt_page_to_pfn  __pt_page_to_pfn
+#endif
 
 #endif /* __ASSEMBLY__ */
 

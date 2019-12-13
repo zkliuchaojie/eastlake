@@ -1,3 +1,3 @@
 .PHONY:
 
-all-mt:
+all-st:
