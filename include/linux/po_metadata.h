@@ -8,6 +8,7 @@
 
 #include <linux/list.h> //vm_list
 #include <linux/types.h> //uid gid
+#include <linux/po_map.h>
 
 #define PO_NS_LENGTH 128		//ASCII 0~128
 
@@ -17,7 +18,15 @@ struct po_super
 	int trie_node_count;
 	int container_count;
 	int po_count;
+	/*
+	 * maintain non-continuous mapping.
+	 * the virtual addr from PO_NON_CONTINUOUS_MAP_AREA_START
+	 * to PO_MAP_AREA_END.
+	 */
+	struct po_vma *vma_free_list_pa;
+	struct po_vma *vma_busy_list_pa;
 };
+
 struct po_chunk
 {
 	unsigned long long start;
@@ -75,4 +84,5 @@ struct po_ns_record *po_ns_burst(struct po_ns_trie_node *prev_trie_node,int prev
 struct po_ns_record *po_ns_delete_record(struct po_ns_container *container, \
 	int depth, const char *str, int str_length);
 void po_super_init(struct po_super *po_super);
+struct po_super* po_get_super(void);
 #endif

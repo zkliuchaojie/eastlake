@@ -16,51 +16,7 @@
 #include <uapi/asm-generic/fcntl.h>
 #include <linux/mman.h>
 #include <asm/tlbflush.h>
-
-/*
- * the following codes is the same with mm/po.c,
- * please refactor it in the future.
- */
-#ifdef CONFIG_ZONE_PM_EMU
-
-#define pt_page_to_virt(page)	phys_to_virt(pt_page_to_pfn(page)<<PAGE_SHIFT_REDEFINED)
-#define pt_page_to_phys(page)	(pt_page_to_pfn(page)<<PAGE_SHIFT_REDEFINED)
-#define virt_to_pt_page(p)	pfn_to_pt_page((virt_to_phys(p)>>PAGE_SHIFT_REDEFINED))
-#define phys_to_pt_page(phys)	pfn_to_pt_page(phys>>PAGE_SHIFT_REDEFINED)
-
-/*
- * for now, kpmalloc/kpfree is used to alloc/free AEP space not bigger than 4KB.
- */
-static void *kpmalloc(size_t size, gpfp_t flags)
-{
-	struct pt_page *page;
-
-	if (size > PAGE_SIZE_REDEFINED)
-		return NULL;
-	page = alloc_pt_pages_node(0, flags, 0);
-	if (page == NULL)
-		return NULL;
-	pr_info("page: %#lx", (unsigned long)page);
-	pr_info("pt_page_to_pfn: %ld", pt_page_to_pfn(page));
-	return (void*)pt_page_to_virt(page);
-}
-
-static void kpfree(void *objp)
-{
-	__free_pt_pages(virt_to_pt_page(objp), 0);
-}
-
-#else
-
-/*
- * We define kpmalloc(kpfree) as kmalloc(kfree), and it is
- * used to allocate space from persistent memory.
- * In the future, someone(yes, someone) will implement them.
- */
-#define kpmalloc	kmalloc
-#define kpfree		kfree
-
-#endif // CONFIG_ZONE_PM_EMU
+#include <linux/pmalloc.h>
 
 #define debug 1
 #define debugburst 1
@@ -79,6 +35,7 @@ void *po_alloc(int size)
 void po_super_init(struct po_super *po_super)
 {
 	struct po_ns_trie_node *root;
+	struct po_vma *vma;
 	int i;
 
 	root = kpmalloc(sizeof(struct po_ns_trie_node), GFP_KERNEL);
@@ -90,6 +47,12 @@ void po_super_init(struct po_super *po_super)
 	po_super->container_count = 0;
 	po_super->po_count = 0;
 	pr_info("%#lx", po_super);
+	// init non-continuous address space
+	po_super->vma_busy_list_pa = NULL;
+	vma = kpmalloc(sizeof(struct po_vma), GFP_KERNEL);
+	vma->start = PO_NON_CONTINUOUS_MAP_AREA_START;
+	vma->size = PO_NON_CONTINUOUS_MAP_SIZE;
+	vma->next_pa = NULL;
 }
 
 struct po_super* po_get_super(void) //以后应该上层提供，暂时先这样写

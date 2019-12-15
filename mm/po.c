@@ -16,6 +16,7 @@
 #include <uapi/asm-generic/fcntl.h>
 #include <linux/mman.h>
 #include <asm/tlbflush.h>
+#include <linux/pmalloc.h>
 /*
  * This micro should be defined in linux/po_metadata.h.
  * Including the trailing NUL, the max length of po is 256.
@@ -23,131 +24,6 @@
 #ifndef MAX_PO_NAME_LENGTH
 #define MAX_PO_NAME_LENGTH	256
 #endif
-
-#ifdef CONFIG_ZONE_PM_EMU
-
-#define pt_page_to_virt(page)	phys_to_virt(pt_page_to_pfn(page)<<PAGE_SHIFT_REDEFINED)
-#define pt_page_to_phys(page)	(pt_page_to_pfn(page)<<PAGE_SHIFT_REDEFINED)
-#define virt_to_pt_page(p)	pfn_to_pt_page((virt_to_phys(p)>>PAGE_SHIFT_REDEFINED))
-#define phys_to_pt_page(phys)	pfn_to_pt_page(phys>>PAGE_SHIFT_REDEFINED)
-
-/*
- * alloc_pt_pages/free_pt_pages is used to alloc/free AEP space,
- * and the return value is a virt address of the starting memory space.
- * Difference with kpmalloc, alloc_pt_pages just alloc space for the
- * data of persistent object.
- */
-void *po_alloc_pt_pages(size_t size, gpfp_t flags)
-{
-	struct pt_page *page;
-	unsigned int order;
-	unsigned long tmp;
-
-	size = ALIGN(size, PAGE_SIZE_REDEFINED);
-	tmp = 1 * PAGE_SIZE_REDEFINED;
-	order = 0;
-	for (; tmp < size; order++)
-		tmp *= 2;
-	page = alloc_pt_pages_node(0, flags, order);
-	if (page == NULL)
-		return NULL;
-	return (void*)pt_page_to_virt(page);
-}
-
-/*
- * there should be a number, making pow(2, number) equal size.
- */
-void po_free_pt_pages(void *p, size_t size)
-{
-	unsigned int order;
-	unsigned long tmp;
-
-	tmp = 1 * PAGE_SIZE_REDEFINED;
-	order = 0;
-	for (; tmp < size; order++)
-		tmp *= 2;
-	__free_pt_pages(virt_to_pt_page(p), order);
-}
-
-/*
- * for now, kpmalloc/kpfree is used to alloc/free AEP space not bigger than 4KB.
- */
-void *kpmalloc(size_t size, gpfp_t flags)
-{
-	struct pt_page *page;
-
-	if (size > PAGE_SIZE_REDEFINED)
-		return NULL;
-	page = alloc_pt_pages_node(0, flags, 0);
-	if (page == NULL)
-		return NULL;
-	pr_info("page: %#lx", (unsigned long)page);
-	pr_info("pt_page_to_pfn: %lld", pt_page_to_pfn(page));
-	return (void*)pt_page_to_virt(page);
-}
-
-void kpfree(void *objp)
-{
-	__free_pt_pages(virt_to_pt_page(objp), 0);
-}
-
-#else
-
-/*
- * We define kpmalloc(kpfree) as kmalloc(kfree), and it is
- * used to allocate space from persistent memory.
- * In the future, someone(yes, someone) will implement them.
- */
-#define kpmalloc	kmalloc
-#define kpfree		kfree
-
-#endif // CONFIG_ZONE_PM_EMU
-
-/*
- * Syscalls about persistent object depend on metadata module,
- * which provides three interfaces: po_ns_search, po_ns_insert
- * and po_ns_delete. To test these syscalls independently, we
- * implement the above three interface with a simple array and
- * assume that the lenght of poname is 1 and all ponames consists
- * of character.
- */
-
-/*
-struct po_ns_record *rcds['z' - 'a' + 1] = {NULL};
-struct po_ns_record *po_ns_search(const char *str, int strlen)
-{
-	struct po_ns_record *rcd;
-
-	if (rcds[*str - 'a'] == NULL)
-		return NULL;
-	rcd = rcds[*str - 'a'];
-	return rcd;
-}
-
-struct po_ns_record *po_ns_insert(const char *str, int strlen)
-{
-	struct po_ns_record *rcd;
-
-	if (rcds[*str - 'a'] != NULL)
-		return NULL;
-	rcd = kpmalloc(sizeof(*rcd), GFP_KERNEL);
-	pr_info("po_ns_insert: %p", rcd);
-	rcd->desc = NULL;
-	rcds[*str - 'a'] = rcd;
-	return rcd;
-}
-
-struct po_ns_record *po_ns_delete(const char *str, int strlen)
-{
-	struct po_ns_record *rcd;
-
-	if (rcds[*str - 'a'] == NULL)
-		return NULL;
-	rcd = rcds[*str - 'a'];
-	rcds[*str - 'a'] = NULL;
-	return rcd;
-}
-*/
 
 void free_chunk(struct po_chunk *chunk)
 {
@@ -662,6 +538,7 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 		return -ENOMEM;
 #ifdef CONFIG_ZONE_PM_EMU
 	v_start = po_alloc_pt_pages(len, GPFP_KERNEL);
+	
 #else
 	v_start = kpmalloc(len, GFP_KERNEL);
 #endif

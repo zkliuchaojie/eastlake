@@ -30,6 +30,18 @@
 				MAX_GAP - \
 				MAX_RANDOM - \
 				PO_MAP_AREA_SIZE)
+
+#define PO_NON_CONTINUOUS_MAP_SIZE 		(PO_MAP_AREA_SIZE/2)
+#define PO_NON_CONTINUOUS_MAP_AREA_START	(PO_MAP_AREA_START + \
+						PO_NON_CONTINUOUS_MAP_SIZE)
+
 #define PO_MAP_AREA_END		(PO_MAP_AREA_START + PO_MAP_AREA_SIZE)
+
+struct po_vma
+{
+	unsigned long long start;
+	unsigned long long size;
+	struct po_vma *next_pa;
+};
 
 #endif
