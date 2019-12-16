@@ -37,11 +37,7 @@ void free_chunk(struct po_chunk *chunk)
 	/*
 	 * free pages.
 	 */
-#ifdef CONFIG_ZONE_PM_EMU
 	po_free_pt_pages(phys_to_virt(chunk->start), chunk->size);
-#else
-	kpfree(phys_to_virt(chunk->start));
-#endif
 	/* free po_chunk */
 	kpfree(chunk);
 }
@@ -619,7 +615,6 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 	new_chunk = (struct po_chunk *)kpmalloc(sizeof(*new_chunk), GFP_KERNEL);
 	if (!new_chunk)
 		return -ENOMEM;
-#ifdef CONFIG_ZONE_PM_EMU
 	if (len > MAX_BUDDY_ALLOC_SIZE) {
 		po_vma = po_vma_alloc(len);
 		if (!po_vma)
@@ -650,23 +645,17 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 			prev = curr;
 			cnt += alloc_size;
 		}
-		goto add_new_chunk;
 	} else {
 		v_start = po_alloc_pt_pages(len, GPFP_KERNEL);
+		if (!v_start) {
+			kpfree(new_chunk);
+			return -ENOMEM;
+		}
+		new_chunk->start = virt_to_phys(v_start);
+		new_chunk->size = len;
+		new_chunk->next_pa = NULL;
 	}
-#else
-	v_start = kpmalloc(len, GFP_KERNEL);
-#endif
-	if (!v_start) {
-		kpfree(new_chunk);
-		return -ENOMEM;
-	}
-	pr_info("po_extend: ");
-	new_chunk->start = virt_to_phys(v_start);
-	new_chunk->size = len;
-	new_chunk->next_pa = NULL;
 
-add_new_chunk:
 	if (desc->data_pa == NULL) {
 		desc->data_pa = (struct po_chunk *)virt_to_phys(new_chunk);
 	} else {
