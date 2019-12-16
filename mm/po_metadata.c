@@ -48,11 +48,11 @@ void po_super_init(struct po_super *po_super)
 	po_super->po_count = 0;
 	pr_info("%#lx", po_super);
 	// init non-continuous address space
-	po_super->vma_busy_list_pa = NULL;
 	vma = kpmalloc(sizeof(struct po_vma), GFP_KERNEL);
 	vma->start = PO_NON_CONTINUOUS_MAP_AREA_START;
 	vma->size = PO_NON_CONTINUOUS_MAP_SIZE;
 	vma->next_pa = NULL;
+	po_super->vma_free_list_pa = virt_to_phys(vma);
 }
 
 struct po_super* po_get_super(void) //以后应该上层提供，暂时先这样写

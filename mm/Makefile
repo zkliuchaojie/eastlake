@@ -44,6 +44,7 @@ obj-y			:= filemap.o mempool.o oom_kill.o fadvise.o \
 obj-y += init-mm.o
 obj-y += po.o
 obj-y += po_metadata.o
+obj-y += po_map.o
 
 ifdef CONFIG_NO_BOOTMEM
 	obj-y		+= nobootmem.o

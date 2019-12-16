@@ -24,7 +24,6 @@ struct po_super
 	 * to PO_MAP_AREA_END.
 	 */
 	struct po_vma *vma_free_list_pa;
-	struct po_vma *vma_busy_list_pa;
 };
 
 struct po_chunk

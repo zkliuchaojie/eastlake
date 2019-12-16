@@ -37,11 +37,18 @@
 
 #define PO_MAP_AREA_END		(PO_MAP_AREA_START + PO_MAP_AREA_SIZE)
 
+#define SET_NC_MAP_METADATA_FLAG(addr)	(addr | 0x1)
+#define IS_NC_MAP_METADATA(addr)	(addr & 0x1)
+#define GET_NC_MAP_METADATA(addr)	((unsigned long long)addr & (~0x1UL))
+
 struct po_vma
 {
 	unsigned long long start;
 	unsigned long long size;
 	struct po_vma *next_pa;
 };
+
+struct po_vma *po_vma_alloc(size_t len);
+void po_vma_free(struct po_vma *vma);
 
 #endif

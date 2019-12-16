@@ -25,6 +25,13 @@
 #define MAX_PO_NAME_LENGTH	256
 #endif
 
+
+long po_map_chunk(struct po_chunk *chunk, unsigned long prot, \
+	unsigned long flags, unsigned long fixed_address);
+long po_nc_map(struct po_chunk *nc_map_metadata, \
+	unsigned long prot, unsigned long flags);
+
+
 void free_chunk(struct po_chunk *chunk)
 {
 	/*
@@ -487,6 +494,91 @@ SYSCALL_DEFINE2(po_munmap, unsigned long, addr, size_t, len)
 	if (addr < PO_MAP_AREA_START || addr + len > PO_MAP_AREA_END)
 		return -EINVAL;
 	return 0;
+}\
+
+/*
+ * map a chunk or a non-continuous mapping.
+ * if succeeds, return mapped address, or NULL.
+ */
+long po_map_chunk(struct po_chunk *chunk, unsigned long prot, \
+	unsigned long flags, unsigned long fixed_address)
+{
+	unsigned long long cnt;
+	unsigned long address;
+	struct mm_struct *mm = current->mm;
+	pgd_t *pgd;
+	p4d_t *p4d;
+	pud_t *pud;
+	pmd_t *pmd;
+	pte_t *ptep;
+	pte_t entry;
+	pgprot_t pgprot;
+	vm_flags_t vm_flags = 0;
+
+	if (IS_NC_MAP_METADATA(chunk->start))
+		return po_nc_map(GET_NC_MAP_METADATA(phys_to_virt(chunk->start)), prot, flags);
+
+	vm_flags |= calc_vm_prot_bits(prot, 0) | calc_vm_flag_bits(flags) |
+		mm->def_flags | VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC;
+	pgprot = vm_get_page_prot(vm_flags);
+	/*
+	 * For now, we do not consider huge page: 2MB and 1GB.
+	 * And we just assume that there are 4-level page tables.
+	 */
+	cnt = 0;
+	while (cnt < chunk->size) {
+		if (fixed_address == 0)
+			address = chunk->start + cnt + PO_MAP_AREA_START;
+		else
+			address = fixed_address + cnt;
+		pgd = pgd_offset(mm, address);
+		p4d = p4d_alloc(mm, pgd, address);
+		if (!p4d)
+			return NULL;
+		pud = pud_alloc(mm, p4d, address);
+		if (!pud)
+			return NULL;
+		pmd = pmd_alloc(mm, pud, address);
+		if (!pmd)
+			return NULL;
+		if (pte_alloc(mm, pmd, address))
+			return NULL;
+		entry = pfn_pte((chunk->start+cnt)>>PAGE_SHIFT_REDEFINED, pgprot);
+		if (prot & PROT_WRITE)
+			entry = pte_mkwrite(entry);
+		ptep = pte_offset_map(pmd, address);
+		set_pte(ptep, entry);
+
+		cnt += PAGE_SIZE_REDEFINED;
+	}
+	return chunk->start + PO_MAP_AREA_START;
+}
+
+long po_nc_map(struct po_chunk *nc_map_metadata, unsigned long prot, unsigned long flags)
+{
+	struct po_chunk *chunk;
+	struct po_vma *vma;
+	unsigned long long cnt;
+
+	pr_info("po_nc_map");
+	nc_map_metadata->next_pa;
+	pr_info("try to access next_pa");
+	if (nc_map_metadata->next_pa == NULL)
+		return NULL;
+	pr_info("start to get vma");
+	vma = phys_to_virt(nc_map_metadata->start);
+	pr_info("chunk");
+	chunk = phys_to_virt(nc_map_metadata->next_pa);
+	cnt = 0;
+	do {
+		if (po_map_chunk(chunk, prot, flags, vma->start + cnt) < 0)
+			return NULL;
+		cnt += chunk->size;
+		if (chunk->next_pa == NULL)
+			break;
+		chunk = phys_to_virt(chunk->next_pa);
+	} while(cnt < nc_map_metadata->size);
+	return vma->start;
 }
 
 /*
@@ -496,20 +588,11 @@ SYSCALL_DEFINE2(po_munmap, unsigned long, addr, size_t, len)
 SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 	unsigned long, prot, unsigned long, flags)
 {
-	struct po_chunk *new_chunk, *curr;
+	struct po_chunk *new_chunk, *nc_map_metadata, *prev, *curr;
+	struct po_vma *po_vma;
 	struct po_desc *desc;
 	unsigned long v_start;
-	unsigned long cnt;
-	unsigned long address;
-	struct mm_struct *mm = current->mm;
-	pgd_t *pgd;
-	p4d_t *p4d;
-	pud_t *pud;
-	pmd_t *pmd;
-	pte_t *ptep;
-	pte_t entry;
-	vm_flags_t vm_flags = 0;
-	pgprot_t pgprot;
+	unsigned long cnt, alloc_size;
 	long retval = 0;
 
 	/* check pod */
@@ -537,8 +620,40 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 	if (!new_chunk)
 		return -ENOMEM;
 #ifdef CONFIG_ZONE_PM_EMU
-	v_start = po_alloc_pt_pages(len, GPFP_KERNEL);
-	
+	if (len > MAX_BUDDY_ALLOC_SIZE) {
+		po_vma = po_vma_alloc(len);
+		if (!po_vma)
+			return -ENOMEM;
+		nc_map_metadata = (struct po_chunk *)kpmalloc(sizeof(*new_chunk), GFP_KERNEL);
+		if (!nc_map_metadata)
+			return -ENOMEM;
+		nc_map_metadata->start = virt_to_phys(po_vma);
+		nc_map_metadata->size = len;
+		nc_map_metadata->next_pa = NULL;
+		new_chunk->start = SET_NC_MAP_METADATA_FLAG(virt_to_phys(nc_map_metadata));
+		new_chunk->size = len;
+		new_chunk->next_pa = NULL;
+		/* alloc physical space, and we do this in PG in the future. */
+		cnt = 0;
+		prev = nc_map_metadata;
+		while (cnt < len) {
+			alloc_size = (len-cnt > MAX_BUDDY_ALLOC_SIZE) ? \
+				MAX_BUDDY_ALLOC_SIZE : len - cnt;
+			v_start = po_alloc_pt_pages(alloc_size, GPFP_KERNEL);
+			if (!v_start)
+				return -ENOMEM;
+			curr = (struct po_chunk *)kpmalloc(sizeof(*new_chunk), GFP_KERNEL);
+			curr->start = virt_to_phys(v_start);
+			curr->size = alloc_size;
+			curr->next_pa = NULL;
+			prev->next_pa = (struct po_chunk *)virt_to_phys(curr);
+			prev = curr;
+			cnt += alloc_size;
+		}
+		goto add_new_chunk;
+	} else {
+		v_start = po_alloc_pt_pages(len, GPFP_KERNEL);
+	}
 #else
 	v_start = kpmalloc(len, GFP_KERNEL);
 #endif
@@ -550,6 +665,8 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 	new_chunk->start = virt_to_phys(v_start);
 	new_chunk->size = len;
 	new_chunk->next_pa = NULL;
+
+add_new_chunk:
 	if (desc->data_pa == NULL) {
 		desc->data_pa = (struct po_chunk *)virt_to_phys(new_chunk);
 	} else {
@@ -560,38 +677,9 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 	}
 
 	/* mmap new_chunk */
-	vm_flags |= calc_vm_prot_bits(prot, 0) | calc_vm_flag_bits(flags) |
-		mm->def_flags | VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC;
-	pgprot = vm_get_page_prot(vm_flags);
-	/*
-	 * For now, we do not consider huge page: 2MB and 1GB.
-	 * And we just assume that there are 4-level page tables.
-	 */
-	cnt = 0;
-	while (cnt < len) {
-		address = new_chunk->start + cnt + PO_MAP_AREA_START;
-		if (retval == 0)
-			retval = address;
-		pgd = pgd_offset(mm, address);
-		p4d = p4d_alloc(mm, pgd, address);
-		if (!p4d)
-			return -ENOMEM;
-		pud = pud_alloc(mm, p4d, address);
-		if (!pud)
-			return -ENOMEM;
-		pmd = pmd_alloc(mm, pud, address);
-		if (!pmd)
-			return -ENOMEM;
-		if (pte_alloc(mm, pmd, address))
-			return -ENOMEM;
-		entry = pfn_pte((new_chunk->start+cnt)>>PAGE_SHIFT_REDEFINED, pgprot);
-		if (prot & PROT_WRITE)
-			entry = pte_mkwrite(entry);
-		ptep = pte_offset_map(pmd, address);
-		set_pte(ptep, entry);
-
-		cnt += PAGE_SIZE_REDEFINED;
-	}
+	retval = po_map_chunk(new_chunk, prot, flags, 0);
+	if (retval < 0)
+		return retval;
 	desc->size += len;
 	return retval;
 }
