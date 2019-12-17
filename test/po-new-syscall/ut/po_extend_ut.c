@@ -21,7 +21,7 @@
 
 TEST(po_extend, simple_test)
 {
-	char poname[] = "e";
+	char poname[] = "f";
 	int pod1;
 	long long retval1;
 	char *c;
@@ -43,7 +43,7 @@ TEST(po_extend, simple_test)
 
 TEST(po_extend, extend_twice_test)
 {
-	char poname[] = "e";
+	char poname[] = "f";
 	int pod1;
 	long long retval1;
 	char *c1, *c2;
@@ -70,7 +70,7 @@ TEST(po_extend, extend_twice_test)
 
 TEST(po_extend, exceed_MAX_BUDDY_ALLOC_SIZE)
 {
-	char poname[] = "e";
+	char poname[] = "f";
 	int pod1;
 	long long retval1;
 	char *c1, *c2;
@@ -83,11 +83,11 @@ TEST(po_extend, exceed_MAX_BUDDY_ALLOC_SIZE)
 	ASSERT_GE((unsigned long)c1, 0);
 	c1[0] = 'a';
 	//printf("%c\n", c[0]);
-/*
+
 	retval1 = syscall(403, pod1, 0);
 	ASSERT_GE(retval1, 0);
 
 	retval1 = syscall(401, poname, 0);
 	ASSERT_EQ(retval1, 0);
-*/
+
 }
