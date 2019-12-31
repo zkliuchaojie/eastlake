@@ -368,14 +368,11 @@ SYSCALL_DEFINE6(po_mmap, unsigned long, addr, unsigned long, len, \
 		chunk_size = IS_NC_MAP(chunk->start) ? \
 			((struct po_vma *)phys_to_virt(chunk->size))->size : chunk->size;
 		if (pos + chunk_size > pgoff) {
-			pos = pgoff - pos;
 			break;
 		}
-		pos += chunk->size;
+		pos += chunk_size;
 		chunk = (struct po_chunk *)phys_to_virt(chunk->next_pa);
 	}
-	pr_info("pos: %d", pos);
-
 	cnt = 0;
 	while (cnt < len) {
 		tmp = po_map_chunk(chunk, prot, flags, 0);
