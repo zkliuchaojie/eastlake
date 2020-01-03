@@ -176,3 +176,24 @@ TEST(po_extend, extend_addr_should_not_be_the_same)
 	retval1 = syscall(401, poname, 0);
 	ASSERT_EQ(retval1, 0);
 }
+TEST(po_extend, extend_with_PROT_NONE)
+{
+	char poname[] = "f";
+	int pod1;
+	long long retval1;
+	char *c;
+
+	pod1 = syscall(400, poname);
+	ASSERT_GE(pod1, 0);
+
+	c = (char *)syscall(406, pod1, 4096, PROT_NONE, MAP_PRIVATE);
+	ASSERT_GE((unsigned long)c, 0);
+	// cause error
+	// printf("%c\n", c[0]);
+
+	retval1 = syscall(403, pod1, 0);
+	ASSERT_GE(retval1, 0);
+
+	retval1 = syscall(401, poname, 0);
+	ASSERT_EQ(retval1, 0);
+}

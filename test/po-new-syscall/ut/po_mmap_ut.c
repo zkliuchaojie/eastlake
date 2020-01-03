@@ -131,7 +131,7 @@ TEST(po_mmap, can_not_access_a_mapping_after_unlink__test)
 
 TEST(po_mmap, map_po_after_many_po_extend)
 {
-	char poname[] = "f";
+	char poname[] = "m";
 	int pod1;
 	long long retval1;
 	char *c_array[10];
@@ -165,6 +165,28 @@ TEST(po_mmap, map_po_after_many_po_extend)
 			ASSERT_NE(c_array[i], c_array[j]);
 		}
 	}
+
+	retval1 = syscall(403, pod1, 0);
+	ASSERT_GE(retval1, 0);
+
+	retval1 = syscall(401, poname, 0);
+	ASSERT_EQ(retval1, 0);
+}
+
+TEST(po_mmap, mmap_with_PROT_NONE)
+{
+	char poname[] = "m";
+	int pod1;
+	long long retval1;
+	char *c;
+
+	pod1 = syscall(400, poname);
+	ASSERT_GE(pod1, 0);
+
+	c = (char *)syscall(406, pod1, 4096, PROT_NONE, MAP_PRIVATE);
+	ASSERT_GE((unsigned long)c, 0);
+	// cause error
+	// printf("%c\n", c[0]);
 
 	retval1 = syscall(403, pod1, 0);
 	ASSERT_GE(retval1, 0);

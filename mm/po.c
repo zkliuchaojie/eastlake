@@ -347,8 +347,9 @@ SYSCALL_DEFINE6(po_mmap, unsigned long, addr, unsigned long, len, \
 		|| (pgoff + len > desc->size))
 		return -EINVAL;
 	pr_info("len");
-	/* check prot, just support PROT_READ and PROT_WRITE for now*/
-	if (prot != PROT_READ && prot != PROT_WRITE \
+	/* check prot, just support PROT_NONE, PROT_READ and PROT_WRITE */
+	if (prot != PROT_NONE \
+		&& prot != PROT_READ && prot != PROT_WRITE \
 		&& (prot != (PROT_READ | PROT_WRITE)))
 		return -EINVAL;
 	if (prot & PROT_READ)
@@ -509,8 +510,9 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 	/* check len */
 	if ((len <= 0) || ((PAGE_SIZE_REDEFINED - 1) & len))
 		return -EINVAL;
-	/* check prot, just support PROT_READ and PROT_WRITE for now*/
-	if (prot != PROT_READ && prot != PROT_WRITE \
+	/* check prot, just support PROT_NONE, PROT_READ and PROT_WRITE */
+	if (prot != PROT_NONE \
+		&& prot != PROT_READ && prot != PROT_WRITE \
 		&& (prot != (PROT_READ | PROT_WRITE)))
 		return -EINVAL;
 	if (prot & PROT_READ)
