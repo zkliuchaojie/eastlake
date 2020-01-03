@@ -197,3 +197,29 @@ TEST(po_extend, extend_with_PROT_NONE)
 	retval1 = syscall(401, poname, 0);
 	ASSERT_EQ(retval1, 0);
 }
+
+TEST(po_extend, extend_with_MAP_ANONYMOUS)
+{
+	char poname[] = "f";
+	int pod1;
+	long long retval1;
+	char *c;
+	int i;
+
+	pod1 = syscall(400, poname);
+	ASSERT_GE(pod1, 0);
+
+	c = (char *)syscall(406, pod1, 4096, PROT_READ | PROT_WRITE, \
+		MAP_PRIVATE | MAP_ANONYMOUS);
+	ASSERT_GE((unsigned long)c, 0);
+	for (i = 0; i < 4096; i++) {
+		// printf("%d ", c[i]);
+		ASSERT_EQ(c[i], 0);
+	}
+
+	retval1 = syscall(403, pod1, 0);
+	ASSERT_GE(retval1, 0);
+
+	retval1 = syscall(401, poname, 0);
+	ASSERT_EQ(retval1, 0);
+}

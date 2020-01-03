@@ -44,6 +44,20 @@ static void *po_alloc_pt_pages(size_t size, gpfp_t flags)
 }
 
 /*
+ * get zeroed pages.
+ */
+static void *po_alloc_pt_pages_zeroed(size_t size, gpfp_t flags)
+{
+	void *ret;
+
+	ret = po_alloc_pt_pages(size, flags);
+	if (ret == NULL)
+		return ret;
+	memset(ret, 0, size);
+	return ret;
+}
+
+/*
  * there should be a number, making pow(2, number) equal size.
  */
 static void po_free_pt_pages(void *p, size_t size)

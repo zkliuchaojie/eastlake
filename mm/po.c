@@ -359,9 +359,13 @@ SYSCALL_DEFINE6(po_mmap, unsigned long, addr, unsigned long, len, \
 		if ((!(desc->flags & O_WRONLY)) && (!(desc->flags & O_RDWR)))
 			return -EINVAL;
 	pr_info("prot");
-	/* check flags, just support MAP_PRIVATE for now */
-	if (flags != MAP_PRIVATE)
+	/* check flags, just support MAP_PRIVATE and MAP_ANONYMOUS */
+	if (flags != MAP_ANONYMOUS && flags != MAP_PRIVATE \
+		&& (flags != (MAP_ANONYMOUS | MAP_PRIVATE)))
 		return -EINVAL;
+	if ((flags & MAP_ANONYMOUS) && (pod != -1 || pgoff != 0))
+		return -EINVAL;
+
 	pr_info("flags");
 	chunk = (struct po_chunk *)phys_to_virt(desc->data_pa);
 	pos = 0;
@@ -521,8 +525,9 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 	if (prot & PROT_WRITE)
 		if ((!(desc->flags & O_WRONLY)) && (!(desc->flags & O_RDWR)))
 			return -EINVAL;
-	/* check flags, just support MAP_PRIVATE for now */
-	if (flags != MAP_PRIVATE)
+	/* check flags, just support MAP_PRIVATE and MAP_ANONYMOUS */
+	if (flags != MAP_ANONYMOUS && flags != MAP_PRIVATE \
+		&& (flags != (MAP_ANONYMOUS | MAP_PRIVATE)))
 		return -EINVAL;
 
 	new_chunk = (struct po_chunk *)kpmalloc(sizeof(*new_chunk), GFP_KERNEL);
@@ -548,7 +553,9 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 		while (cnt < len) {
 			alloc_size = (len-cnt > MAX_BUDDY_ALLOC_SIZE) ? \
 				MAX_BUDDY_ALLOC_SIZE : len - cnt;
-			v_start = po_alloc_pt_pages(alloc_size, GPFP_KERNEL);
+			v_start = (flags & MAP_ANONYMOUS) ? \
+				po_alloc_pt_pages_zeroed(alloc_size, GPFP_KERNEL) : \
+				po_alloc_pt_pages(alloc_size, GPFP_KERNEL);
 			if (!v_start)
 				return -ENOMEM;
 			curr = (struct po_chunk *)kpmalloc(sizeof(*new_chunk), GFP_KERNEL);
@@ -560,7 +567,10 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 			cnt += alloc_size;
 		}
 	} else {
-		v_start = po_alloc_pt_pages(len, GPFP_KERNEL);
+		alloc_size = len;
+		v_start = (flags & MAP_ANONYMOUS) ? \
+			po_alloc_pt_pages_zeroed(alloc_size, GPFP_KERNEL) : \
+			po_alloc_pt_pages(alloc_size, GPFP_KERNEL);
 		if (!v_start) {
 			kpfree(new_chunk);
 			return -ENOMEM;
