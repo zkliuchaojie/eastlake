@@ -27,7 +27,7 @@ struct po_vma *po_vma_alloc(size_t len)
 			return curr_vma;
 		} else {
 			new_vma = kpmalloc(sizeof(struct po_vma), GFP_KERNEL);
-			new_vma->start = curr_vma->start - len;
+			new_vma->start = curr_vma->start + len;
 			new_vma->size = curr_vma->size - len;
 			new_vma->next_pa = curr_vma->next_pa;
 			super->vma_free_list_pa = virt_to_phys(new_vma);
@@ -40,7 +40,7 @@ struct po_vma *po_vma_alloc(size_t len)
 			return curr_vma;
 		} else {
 			new_vma = kpmalloc(sizeof(struct po_vma), GFP_KERNEL);
-			new_vma->start = curr_vma->start - len;
+			new_vma->start = curr_vma->start + len;
 			new_vma->size = curr_vma->size - len;
 			new_vma->next_pa = curr_vma->next_pa;
 			prev_vma->next_pa = virt_to_phys(new_vma);
