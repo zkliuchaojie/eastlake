@@ -84,8 +84,6 @@ static void *kpmalloc(size_t size, gpfp_t flags)
 	page = alloc_pt_pages_node(0, flags, 0);
 	if (page == NULL)
 		return NULL;
-	pr_info("page: %#lx", (unsigned long)page);
-	pr_info("pt_page_to_pfn: %lld", pt_page_to_pfn(page));
 	return (void*)pt_page_to_virt(page);
 }
 

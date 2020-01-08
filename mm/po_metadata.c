@@ -46,13 +46,14 @@ void po_super_init(struct po_super *po_super)
 	po_super->trie_node_count = 1;
 	po_super->container_count = 0;
 	po_super->po_count = 0;
-	pr_info("%#lx", po_super);
 	// init non-continuous address space
 	vma = kpmalloc(sizeof(struct po_vma), GFP_KERNEL);
 	vma->start = PO_NON_CONTINUOUS_MAP_AREA_START;
 	vma->size = PO_NON_CONTINUOUS_MAP_SIZE;
 	vma->next_pa = NULL;
 	po_super->vma_free_list_pa = virt_to_phys(vma);
+	pr_info("PO_MAP_AREA_START: %#lx, PO_MAP_AREA_END: %#lx", \
+		PO_MAP_AREA_START, PO_MAP_AREA_END);
 }
 
 struct po_super* po_get_super(void) //以后应该上层提供，暂时先这样写
@@ -62,7 +63,6 @@ struct po_super* po_get_super(void) //以后应该上层提供，暂时先这样
 
 	pm_zone = NODE_DATA(0)->node_pm_zones + ZONE_PM_EMU;
 	pm_super = pm_zone->super;
-	pr_info("%#lx", &(pm_super->po_super));
 	return &(pm_super->po_super);
 }
 
@@ -73,11 +73,9 @@ struct po_ns_record *po_ns_search_container(struct po_ns_container *cont, \
 
 	rc = cont->record_first;
 	while (rc != NULL) {
-		pr_info("rc->str: %s", rc->str);
 		if ((rc->strlen == strlen - depth) && \
 			 (memcmp(str+depth, rc->str, strlen-depth)==0))
 				return rc;
-		pr_info("rc: %#lx", rc);
 		rc = rc->next;
 	}
 	return NULL;
@@ -88,15 +86,11 @@ struct po_ns_record *po_insert_record(struct po_ns_trie_node *prev_trie_node, \
 {
 	struct po_ns_container *cont;
 
-	pr_info("po insert record");
 	cont = (struct po_ns_container *)(prev_trie_node->ptrs[prev_index]);
-	if (cont->record_first != NULL)
-		pr_info("str: %s", cont->record_first->str);
 	record->next = cont->record_first;
 	cont->record_first = record;
 	//之后补充burst判定
 	cont->cnt_limit++;
-	pr_info("%d, cont: %#lx", cont->cnt_limit, cont);
 	if(po_ns_need_burst(cont))
 		return po_ns_burst(prev_trie_node, prev_index);
 	return record;
@@ -109,30 +103,19 @@ struct po_ns_record * po_ns_search(const char* str, int strlen)
 	int depth;
 	int index;
 
-	pr_info("po ns search, str: %s", str);
 	depth = 1;
 	ps = po_get_super();
 	prev = NULL;
 	curr = ps->trie_root;
 	while(depth < strlen + 2) {
-		if (debug)
-			pr_info("depth change:%d\n",depth);
-		if (debug)
-			pr_info("%c\n",index);
 		if(depth == (int)(curr->depth)) {
-			if (debug)
-				pr_info("node depth:%d\n", curr->depth);
 			prev = curr;
 			index = (int)str[depth-1];
-			pr_info("prev: %#lx, index: %d", prev, index);
 			curr = curr->ptrs[index];
-			pr_info("%#lx", curr);
 			if (curr == NULL)
 				return NULL;
 			depth++;
 		} else {
-			if (debug)
-				pr_info("search container");
 			return po_ns_search_container((struct po_ns_container *)(curr), \
 				depth - 1, str, strlen);
 		}
@@ -149,7 +132,6 @@ struct po_ns_record *po_ns_insert(const char* str, int strlen)
 	struct po_ns_container *cont;
 	struct po_ns_record *rc;
 
-	pr_info("po ns insert: %s", str);
 
 	ps = po_get_super();
 	root = ps->trie_root;
@@ -157,12 +139,9 @@ struct po_ns_record *po_ns_insert(const char* str, int strlen)
 	prev = NULL;
 	curr = root;
 	while (depth < strlen + 1) {
-		if (debug)
-			pr_info("depth change:%d\n",depth);
 		index = (int)str[depth-1];
 		prev = curr;
 		curr = curr->ptrs[index];
-		pr_info("index: %d, %#lx, %#lx", index, prev, curr);
 		if (curr == NULL) {
 			cont = kpmalloc(sizeof(struct po_ns_container), GFP_KERNEL);
 			rc = kpmalloc(sizeof(struct po_ns_record), GFP_KERNEL);
@@ -174,10 +153,8 @@ struct po_ns_record *po_ns_insert(const char* str, int strlen)
 			} else {
 				rc->str = NULL;
 			}
-			pr_info("%d", rc->strlen);
 			rc->next = NULL;
 			cont->record_first = rc;
-			pr_info("prev: %#lx, index: %d", prev, index);
 			cont->cnt_limit = 1;
 			prev->ptrs[index]=(struct po_ns_trie_node *)cont;
 			return rc;
@@ -197,7 +174,6 @@ struct po_ns_record *po_ns_insert(const char* str, int strlen)
 					rc->str = NULL;
 				}
 				rc->next=NULL;
-				pr_info("container: %#lx", prev->ptrs[index]);
 				return po_insert_record(prev, index, rc);
 			}
 			else {
@@ -231,14 +207,11 @@ struct po_ns_record * po_ns_delete(const char* str, int strlen)
 	int	depth;
 	int 	index;
 
-	pr_info("po ns delete, str: %s, strlen: %d", str, strlen);
-
 	ps = po_get_super();
 	curr = ps->trie_root;
 	prev = NULL;
 	depth = 1;
 	while (depth < strlen + 2) {
-		pr_info("depth: %d", depth);
 		if (depth == (int)(curr->depth)) {
 			prev = curr;
 			index = (int)str[depth-1];
@@ -302,8 +275,6 @@ struct po_ns_record *po_ns_burst(struct po_ns_trie_node *prev_trie_node, int pre
 	int i;
 	int index;
 
-	pr_info("burst");
-
 	cont = (struct po_ns_container *)prev_trie_node->ptrs[prev_index];
 	new_node = kpmalloc(sizeof(struct po_ns_trie_node), GFP_KERNEL);
 	new_node->depth = prev_trie_node->depth + 1;
@@ -311,10 +282,8 @@ struct po_ns_record *po_ns_burst(struct po_ns_trie_node *prev_trie_node, int pre
 		new_node->ptrs[i] = NULL;
 	curr_record = cont->record_first;
 	while (curr_record != NULL) {
-		pr_info("curr_record->str: %s, %d", curr_record->str, curr_record->strlen);
 		new_record = kpmalloc(sizeof(struct po_ns_record), GFP_KERNEL);
 		new_record->desc = curr_record->desc;
-		pr_info("new_record: %#lx, new_record->desc: %#lx", new_record, new_record->desc);
 		/* yes, return the first record */
 		if (retval == NULL)
 			retval = new_record;
@@ -331,17 +300,14 @@ struct po_ns_record *po_ns_burst(struct po_ns_trie_node *prev_trie_node, int pre
 				for (i=0; i<new_record->strlen; i++)
 					new_record->str[i] = curr_record->str[i+1];
 			} else {
-				pr_info("new_record->strlen == 0");
 				new_record->str = NULL;
 			}
 			index = (int)curr_record->str[0];
 			if (new_node->ptrs[index] == NULL) {
-				pr_info("index: %c", curr_record->str[0]);
 				newcont = kpmalloc(sizeof(struct po_ns_container), GFP_KERNEL);
 				newcont->cnt_limit = 1;
 				newcont->record_first = new_record;
 				new_node->ptrs[index] = (struct po_ns_trie_node *)newcont;
-				pr_info("po ns burst, new_node: %#lx, newcont: %#lx", new_node, newcont);
 			} else {
 				cont = (struct po_ns_container *)(new_node->ptrs[index]);
 				new_record->next = cont->record_first;
@@ -359,43 +325,3 @@ struct po_ns_record *po_ns_burst(struct po_ns_trie_node *prev_trie_node, int pre
 	prev_trie_node->ptrs[prev_index]=new_node;
 	return retval;
 }
-#define num 20
-#define ind 2
-/*
-int main()
-{
-	po_super_init();
-	struct po_super *p=po_get_super();
-	printf("%d",p->po_count);
-	printf("%d\n",p->po_count);
-	int i;
-	char s[4]="abcd";
-	for(i=0;i<num;i++)
-	{
-
-		if(debug)printf("=====%dth insert %s=====\n",i,s);
-		struct po_ns_record * p1=po_ns_insert(s,4);
-		s[ind]++;
-		printf("P1:\t%p\t%d\n",p1,i);
-		if(debug)printf("=====%dth insert finished=====\n",i);
-	}
-	
-	char s2[4]="abcd";
-	printf("::::::::::::::::::::::::::::::::::::::::\n");
-	for(i=0;i<num;i++)
-	{
-		if(debug)printf("======%d search %s=====\n",i,s2);
-		struct po_ns_record * p2=po_ns_search(s2,4);
-		s2[ind]++;
-		printf("P2:\t%p\t%d\n",p2,i);
-		if(debug)printf("======%d search finished\n",i);
-	}
-	
-
-		struct po_ns_record * p1=po_ns_insert("a",1);
-		printf("P1:\t%p\n",p1);
-		struct po_ns_record * p2=po_ns_search("a",1);
-		printf("P2:\t%p\n",p2);
-	return 0;
-}
-*/

@@ -125,7 +125,6 @@ SYSCALL_DEFINE2(po_creat, const char __user *, poname, umode_t, mode)
 	struct po_desc *desc;
 	int retval;
 
-	pr_info("po creat");
 	kponame = kmalloc(MAX_PO_NAME_LENGTH, GFP_KERNEL);
 	if (!kponame)
 		return -ENOMEM;
@@ -158,11 +157,9 @@ SYSCALL_DEFINE2(po_creat, const char __user *, poname, umode_t, mode)
 	desc->flags = O_CREAT|O_RDWR;
 	rcd->desc = (struct po_desc *)virt_to_phys(desc);
 
-	pr_info("rcd->desc: %#lx", rcd->desc);
 
 	retval = pos_insert(desc);
 	if (retval < 0) {
-		pr_info("retval less than 0");
 		po_ns_delete(kponame, len);
 		kfree(kponame);
 		kpfree(desc);
@@ -211,14 +208,11 @@ SYSCALL_DEFINE1(po_unlink, const char __user *, poname)
 
 	/* check whether po is opened(busy) */
 	rcd = po_ns_search(kponame, len);
-	pr_info("rcd: %p", rcd);
 	if (rcd == NULL) {
 		kfree(kponame);
 		return -ENOENT;
 	}
-	pr_info("rcd->desc: %p", rcd->desc);
 	desc = (struct po_desc *)phys_to_virt(rcd->desc);
-	pr_info("desc: %p", desc);
 	if (pos_is_open(desc) == true) {
 		kfree(kponame);
 		return -EBUSY;
@@ -237,7 +231,6 @@ SYSCALL_DEFINE1(po_unlink, const char __user *, poname)
 	po_ns_delete(kponame, len);
 	kpfree(rcd);
 	kfree(kponame);
-	pr_info("after curr:");
 	return 0;
 }
 
@@ -269,7 +262,6 @@ SYSCALL_DEFINE3(po_open, const char __user *, poname, int, flags, umode_t, mode)
 	}
 
 	rcd = po_ns_search(kponame, len);
-	pr_info("rcd: %#lx", rcd);
 	if (rcd == NULL) {
 		if (flags & O_CREAT) {
 			rcd = po_ns_insert(kponame, len);
@@ -291,9 +283,7 @@ SYSCALL_DEFINE3(po_open, const char __user *, poname, int, flags, umode_t, mode)
 		}
 	} else {
 		desc = (struct po_desc *)phys_to_virt(rcd->desc);
-		pr_info("phys desc: %#lx, desc: %#lx", rcd->desc, desc);
 		desc->flags = flags;
-		pr_info("nothing");
 	}
 
 	retval = pos_insert(desc);
@@ -336,17 +326,13 @@ SYSCALL_DEFINE6(po_mmap, unsigned long, addr, unsigned long, len, \
 	desc = pos_get(pod);
 	if (!desc)
 		return -EBADF;
-	pr_info("desc->size: %d", desc->size);
-	pr_info("EBADF");
 	/* check len and pgoff */
 	if ((pgoff < 0) || ((PAGE_SIZE_REDEFINED - 1) & pgoff) \
 		|| (pgoff >= desc->size))
 		return -EINVAL;
-	pr_info("pgoff");
 	if ((len <= 0) || ((PAGE_SIZE_REDEFINED - 1) & len) \
 		|| (pgoff + len > desc->size))
 		return -EINVAL;
-	pr_info("len");
 	/* check prot, just support PROT_NONE, PROT_READ and PROT_WRITE */
 	if (prot != PROT_NONE \
 		&& prot != PROT_READ && prot != PROT_WRITE \
@@ -358,7 +344,6 @@ SYSCALL_DEFINE6(po_mmap, unsigned long, addr, unsigned long, len, \
 	if (prot & PROT_WRITE)
 		if ((!(desc->flags & O_WRONLY)) && (!(desc->flags & O_RDWR)))
 			return -EINVAL;
-	pr_info("prot");
 	/* check flags, just support MAP_PRIVATE and MAP_ANONYMOUS */
 	if (flags != MAP_ANONYMOUS && flags != MAP_PRIVATE \
 		&& (flags != (MAP_ANONYMOUS | MAP_PRIVATE)))
@@ -366,7 +351,6 @@ SYSCALL_DEFINE6(po_mmap, unsigned long, addr, unsigned long, len, \
 	if ((flags & MAP_ANONYMOUS) && (pod != -1 || pgoff != 0))
 		return -EINVAL;
 
-	pr_info("flags");
 	chunk = (struct po_chunk *)phys_to_virt(desc->data_pa);
 	pos = 0;
 	while (chunk != NULL) {
@@ -472,14 +456,10 @@ long po_nc_map(struct po_chunk *nc_map_metadata, unsigned long prot, unsigned lo
 	struct po_vma *vma;
 	unsigned long long cnt;
 
-	pr_info("po_nc_map");
 	nc_map_metadata->next_pa;
-	pr_info("try to access next_pa");
 	if (nc_map_metadata->next_pa == NULL)
 		return NULL;
-	pr_info("start to get vma");
 	vma = phys_to_virt(nc_map_metadata->start);
-	pr_info("chunk");
 	chunk = phys_to_virt(nc_map_metadata->next_pa);
 	cnt = 0;
 	do {
@@ -611,10 +591,8 @@ void po_unmap_chunk(struct po_chunk *chunk, unsigned long fixed_address)
 	if (IS_NC_MAP(chunk->start))
 		return po_nc_unmap(phys_to_virt(chunk->size));
 
-	pr_info("po_unmap_chunk");
 	cnt = 0;
 	while (cnt < chunk->size) {
-		pr_info("cnt: %ld:", cnt);
 		if (fixed_address == 0)
 			address = chunk->start + cnt + PO_MAP_AREA_START;
 		else
@@ -624,23 +602,18 @@ void po_unmap_chunk(struct po_chunk *chunk, unsigned long fixed_address)
 		pgd = pgd_offset(mm, address);
 		if (pgd_none_or_clear_bad(pgd))
 			continue;
-		pr_info("pgd");
 		p4d = p4d_offset(pgd, address);
 		if (p4d_none_or_clear_bad(p4d))
 			continue;
-		pr_info("p4d");
 		pud = pud_offset(p4d, address);
 		if (pud_none_or_clear_bad(pud))
 			continue;
-		pr_info("pud");
 		pmd = pmd_offset(pud, address);
 		if (pmd_none_or_clear_bad(pmd))
 			continue;
-		pr_info("pmd");
 		ptep = pte_offset_map(pmd, address);
 		if (pte_none(*ptep))
 			continue;
-		pr_info("pte");
 		pte_clear(mm, address, ptep);
 	}
 	/* the following line does not work, I do not know why */
@@ -655,14 +628,12 @@ void po_nc_unmap(struct po_chunk *nc_map_metadata)
 	struct po_vma *vma;
 	unsigned long long cnt;
 
-	pr_info("po_nc_unmap");
 	if (nc_map_metadata->next_pa == NULL)
 		return;
 	vma = phys_to_virt(nc_map_metadata->start);
 	chunk = phys_to_virt(nc_map_metadata->next_pa);
 	cnt = 0;
 	do {
-		pr_info("cnt: %ld:", cnt);
 		po_unmap_chunk(chunk, vma->start + cnt);
 		cnt += chunk->size;
 		if (chunk->next_pa == NULL)
@@ -713,7 +684,6 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 	struct po_chunk *prev, *curr;
 	unsigned long start;
 
-	pr_info("po_shrink");
 	desc = pos_get(pod);
 	if (!desc)
 		return -EBADF;
@@ -725,13 +695,11 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 
 	if (desc->data_pa == NULL)
 		return 0;
-	pr_info("desc->data_pa is not NULL");
 	curr = (struct po_chunk *)phys_to_virt(desc->data_pa);
 	start = IS_NC_MAP(curr->start) ? GET_NC_MAP(curr->start) \
 		: curr->start + PO_MAP_AREA_START;
 	if (addr == start) {
 		desc->data_pa = curr->next_pa;
-		pr_info("first chunk");
 		goto unmap_and_free_chunk;
 	}
 
