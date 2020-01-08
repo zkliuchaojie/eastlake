@@ -151,6 +151,7 @@ SYSCALL_DEFINE2(po_creat, const char __user *, poname, umode_t, mode)
 	desc = kpmalloc(sizeof(*desc), GFP_KERNEL);
 	desc->size = 0;
 	desc->data_pa = NULL;
+	desc->tail_pa = NULL;
 	desc->uid = current_uid().val;
 	desc->gid = current_gid().val;
 	desc->mode = mode;
@@ -481,6 +482,7 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 	unsigned long, prot, unsigned long, flags)
 {
 	struct po_chunk *new_chunk, *nc_map_metadata, *prev, *curr;
+	struct po_chunk *tail_chunk;
 	struct po_vma *po_vma;
 	struct po_desc *desc;
 	unsigned long v_start;
@@ -560,13 +562,13 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 		new_chunk->next_pa = NULL;
 	}
 
-	if (desc->data_pa == NULL) {
+	if (desc->tail_pa == NULL) {
 		desc->data_pa = (struct po_chunk *)virt_to_phys(new_chunk);
+		desc->tail_pa = desc->data_pa;
 	} else {
-		curr = (struct po_chunk *)phys_to_virt(desc->data_pa);
-		while (curr->next_pa != NULL)
-			curr = (struct po_chunk *)phys_to_virt(curr->next_pa);
-		curr->next_pa = (struct po_chunk *)virt_to_phys(new_chunk);
+		tail_chunk = (struct po_chunk *)phys_to_virt(desc->tail_pa);
+		tail_chunk->next_pa = (struct po_chunk *)virt_to_phys(new_chunk);
+		desc->tail_pa = tail_chunk->next_pa;
 	}
 
 	/* mmap new_chunk */
@@ -682,6 +684,7 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 {
 	struct po_desc *desc;
 	struct po_chunk *prev, *curr;
+	struct po_chunk *tail_chunk;
 	unsigned long start;
 
 	desc = pos_get(pod);
@@ -700,6 +703,8 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 		: curr->start + PO_MAP_AREA_START;
 	if (addr == start) {
 		desc->data_pa = curr->next_pa;
+		if (desc->data_pa == NULL)
+			desc->tail_pa = NULL;
 		goto unmap_and_free_chunk;
 	}
 
@@ -710,6 +715,9 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 			: curr->start + PO_MAP_AREA_START;
 		if (addr == start) {
 			prev->next_pa = curr->next_pa;
+			if (curr == (struct po_chunk *)phys_to_virt(desc->tail_pa)) {
+				desc->tail_pa = (struct po_chunk *)virt_to_phys(prev);
+			}
 			goto unmap_and_free_chunk;
 		}
 		prev = curr;
