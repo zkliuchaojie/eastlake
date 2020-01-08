@@ -273,6 +273,7 @@ SYSCALL_DEFINE3(po_open, const char __user *, poname, int, flags, umode_t, mode)
 			desc = kpmalloc(sizeof(*desc), GFP_KERNEL);
 			desc->size = 0;
 			desc->data_pa = NULL;
+			desc->tail_pa = NULL;
 			desc->uid = current_uid().val;
 			desc->gid = current_gid().val;
 			desc->mode = mode;
