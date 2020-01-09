@@ -16,6 +16,9 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 
+#define PAGE_SIZE_REDEFINED	(4*1024)
+#define MAX_BUDDY_ALLOC_SIZE    (PAGE_SIZE_REDEFINED << 10)
+
 TEST(po_mmap, simple_test)
 {
 	char poname[] = "m";
@@ -124,4 +127,70 @@ TEST(po_mmap, can_not_access_a_mapping_after_unlink__test)
 	ASSERT_EQ(retval1, 0);
 
 	//printf("%c\n", c[0]);
+}
+
+TEST(po_mmap, map_po_after_many_po_extend)
+{
+	char poname[] = "m";
+	int pod1;
+	long long retval1;
+	char *c_array[10];
+	int i, j;
+
+	pod1 = syscall(400, poname);
+	ASSERT_GE(pod1, 0);
+	for (i = 0; i < 10; i++) {
+		c_array[i] = (char *)syscall(406, pod1, 2*MAX_BUDDY_ALLOC_SIZE, \
+			 PROT_READ | PROT_WRITE, MAP_PRIVATE);
+		ASSERT_GE((unsigned long)c_array[i], 0);
+		c_array[i][0] = 'a';
+		//printf("%p\n", c_array[i]);
+	}
+
+	for(i = 0; i < 10; i++) {
+		for (j = i+1; j < 10; j++) {
+			ASSERT_NE(c_array[i], c_array[j]);
+		}
+	}
+
+	for (i = 0; i < 10; i++) {
+		c_array[i] = (char *)syscall(404, 0, 4096, PROT_READ | PROT_WRITE, \
+			MAP_PRIVATE, pod1, i*2*MAX_BUDDY_ALLOC_SIZE);
+		ASSERT_GE((unsigned long)c_array[i], 0);
+		c_array[i][0] = 'a';
+		//printf("%p\n", c_array[i]);
+	}
+	for(i = 0; i < 10; i++) {
+		for (j = i+1; j < 10; j++) {
+			ASSERT_NE(c_array[i], c_array[j]);
+		}
+	}
+
+	retval1 = syscall(403, pod1, 0);
+	ASSERT_GE(retval1, 0);
+
+	retval1 = syscall(401, poname, 0);
+	ASSERT_EQ(retval1, 0);
+}
+
+TEST(po_mmap, mmap_with_PROT_NONE)
+{
+	char poname[] = "m";
+	int pod1;
+	long long retval1;
+	char *c;
+
+	pod1 = syscall(400, poname);
+	ASSERT_GE(pod1, 0);
+
+	c = (char *)syscall(406, pod1, 4096, PROT_NONE, MAP_PRIVATE);
+	ASSERT_GE((unsigned long)c, 0);
+	// cause error
+	// printf("%c\n", c[0]);
+
+	retval1 = syscall(403, pod1, 0);
+	ASSERT_GE(retval1, 0);
+
+	retval1 = syscall(401, poname, 0);
+	ASSERT_EQ(retval1, 0);
 }
