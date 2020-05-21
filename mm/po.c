@@ -17,21 +17,7 @@
 #include <linux/mman.h>
 #include <asm/tlbflush.h>
 #include <linux/pmalloc.h>
-/*
- * This micro should be defined in linux/po_metadata.h.
- * Including the trailing NUL, the max length of po is 256.
- */
-#ifndef MAX_PO_NAME_LENGTH
-#define MAX_PO_NAME_LENGTH	256
-#endif
 
-
-long po_map_chunk(struct po_chunk *chunk, unsigned long prot, \
-	unsigned long flags, unsigned long fixed_address);
-long po_nc_map(struct po_chunk *nc_map_metadata, \
-	unsigned long prot, unsigned long flags);
-void po_unmap_chunk(struct po_chunk *chunk, unsigned long fixed_address);
-void po_nc_unmap(struct po_chunk *nc_map_metadata);
 void po_free_chunk(struct po_chunk *chunk);
 void po_free_nc_chunk(struct po_chunk *nc_map_metadata);
 
@@ -446,6 +432,7 @@ long po_map_chunk(struct po_chunk *chunk, unsigned long prot, \
 			entry = pte_mkwrite(entry);
 		ptep = pte_offset_map(pmd, address);
 		set_pte(ptep, entry);
+		/* we don't need TLB flush, because it is not present before */
 
 		cnt += PAGE_SIZE_REDEFINED;
 	}
