@@ -77,7 +77,7 @@ struct po_ns_trie_node
 	struct po_ns_trie_node *ptrs[PO_NS_LENGTH];
 };
 
-struct po_ns_record * po_ns_search(const char* str,int strlen); //extren 关键字有的内核源码加了，有的地方没加，暂时加上吧
+struct po_ns_record * po_ns_search(const char* str,int strlen);
 struct po_ns_record * po_ns_insert(const char* str,int strlen);
 struct po_ns_record * po_ns_delete(const char* str,int strlen);
 
@@ -92,11 +92,8 @@ struct po_super* po_get_super(void);
 /*
  * po mapping and unmapping functions.
  */
-long po_map_chunk(struct po_chunk *chunk, unsigned long prot, \
-        unsigned long flags, unsigned long fixed_address);
-long po_nc_map(struct po_chunk *nc_map_metadata, \
-        unsigned long prot, unsigned long flags);
-void po_unmap_chunk(struct po_chunk *chunk, unsigned long fixed_address);
-void po_nc_unmap(struct po_chunk *nc_map_metadata);
+long po_prepare_map_chunk(struct po_chunk *chunk, unsigned long prot, \
+        unsigned long flags);
+long get_chunk_size(struct po_chunk *chunk);
 
 #endif
