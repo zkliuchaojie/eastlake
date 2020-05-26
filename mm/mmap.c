@@ -2792,6 +2792,112 @@ int do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	return 0;
 }
 
+/*
+ * map a normal chunk or nc chunk.
+ * if succeeds, return mapped address, or NULL.
+ */
+long po_map_chunk(unsigned long start, size_t len, unsigned long prot, \
+	unsigned long flags, unsigned long fixed_address)
+{
+	unsigned long long cnt;
+	unsigned long address;
+	struct vm_area_struct *vma;
+	struct mm_struct *mm = current->mm;
+	pgd_t *pgd;
+	p4d_t *p4d;
+	pud_t *pud;
+	pmd_t *pmd;
+	pte_t *ptep;
+	pte_t entry;
+	pgprot_t pgprot;
+	vm_flags_t vm_flags = 0;
+
+	// check if the chunk is mapped already.
+	vma = find_vma(mm, fixed_address);
+        if (vma && vma->vm_start == fixed_address)
+                return fixed_address;
+
+	vm_flags |= calc_vm_prot_bits(prot, 0) | calc_vm_flag_bits(flags) |
+		mm->def_flags | VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC;
+	pgprot = vm_get_page_prot(vm_flags);
+	/*
+	 * For now, we do not consider huge page: 2MB and 1GB.
+	 * And we just assume that there are 4-level page tables.
+	 */
+	cnt = 0;
+	while (cnt < len) {
+		address = fixed_address + cnt;
+
+		pgd = pgd_offset(mm, address);
+		p4d = p4d_alloc(mm, pgd, address);
+		if (!p4d)
+			return NULL;
+		pud = pud_alloc(mm, p4d, address);
+		if (!pud)
+			return NULL;
+		pmd = pmd_alloc(mm, pud, address);
+		if (!pmd)
+			return NULL;
+		if (pte_alloc(mm, pmd, address))
+			return NULL;
+		entry = pfn_pte((start+cnt)>>PAGE_SHIFT_REDEFINED, pgprot);
+		if (prot & PROT_WRITE)
+			entry = pte_mkwrite(entry);
+		ptep = pte_offset_map(pmd, address);
+		set_pte(ptep, entry);
+		/* we don't need TLB flush, because it is not present before */
+		cnt += PAGE_SIZE_REDEFINED;
+	}
+	/* insert vma(fixed_address) into mm_struct */
+	if (down_write_killable(&mm->mmap_sem))
+		return -EINTR;
+	/* uf should be NULL, because we won't use that logic */
+	mmap_region(NULL, fixed_address, len, vm_flags, 0, NULL);
+	up_write(&mm->mmap_sem);
+	return fixed_address;
+}
+
+/*
+ * this function just remove the corresponding vma and free pagetables.
+ * won't free actual pages.
+ * here is no vma splitting.
+ */
+long po_unmap_chunk(unsigned long start)
+{
+	unsigned long end;
+        struct vm_area_struct *vma, *prev, *next;
+        struct mm_struct *mm = current->mm;
+        struct mmu_gather tlb;
+
+        vma = find_vma(mm, start);
+        if (!vma)
+                return 0;
+
+        prev = vma->vm_prev;
+        end = vma->vm_end;
+        if (vma->vm_start >= end)
+                return 0;
+
+        if (down_write_killable(&mm->mmap_sem))
+                return -EINTR;
+
+        /* remove vma from mm */
+        detach_vmas_to_be_unmapped(mm, vma, prev, end);
+
+	/* free pagetables and update tlb */
+	next = prev ? prev->vm_next : mm->mmap;
+	tlb_gather_mmu(&tlb, mm, start, end);
+        free_pgtables(&tlb, vma, prev ? prev->vm_end : FIRST_USER_ADDRESS,
+                                 next ? next->vm_start : USER_PGTABLES_CEILING);
+        tlb_finish_mmu(&tlb, start, end);
+
+        arch_unmap(mm, vma, start, end);
+        remove_vma_list(mm, vma);
+
+        up_write(&mm->mmap_sem);
+        return 0;
+}
+
 int vm_munmap(unsigned long start, size_t len)
 {
 	int ret;

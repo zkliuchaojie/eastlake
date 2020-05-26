@@ -49,7 +49,6 @@ TEST(po_mmap, simple_test)
 /*
  * need to be automical.
  */
-
 TEST(po_mmap, just_can_read_test)
 {
 	char poname[] = "m";
@@ -99,9 +98,7 @@ TEST(po_mmap, close_is_okay_after_mapping_test)
 	retval1 = syscall(401, poname, 0);
 	ASSERT_EQ(retval1, 0);
 }
-/*
- * TODO: should be automatic.
- */
+
 TEST(po_mmap, can_not_access_a_mapping_after_unlink__test)
 {
 	char poname[] = "m";

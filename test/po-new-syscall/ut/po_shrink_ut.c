@@ -42,9 +42,6 @@ TEST(po_shrink, simple_test)
 	ASSERT_EQ(retval1, 0);
 }
 
-/*
- * TODO: make it automatic.
- */
 TEST(po_shrink, can_not_access_after_shrink_test)
 {
 	char poname[] = "x";
@@ -148,4 +145,3 @@ TEST(po_shrink, exceed_MAX_BUDDY_ALLOC_SIZE)
 	ASSERT_EQ(retval1, 0);
 
 }
-
