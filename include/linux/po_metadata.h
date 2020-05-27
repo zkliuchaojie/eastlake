@@ -3,13 +3,14 @@
  * Author Chen
  */
 
-#ifndef _LINUX_PO_METADATA_H_
-#define _LINUX_PO_METADATA_H_
+#ifndef _LINUX_PO_METADATA_H
+#define _LINUX_PO_METADATA_H
 
 #include <linux/list.h> //vm_list
 #include <linux/types.h> //uid gid
 #include <linux/po_map.h>
 
+#define MAX_PO_NAME_LENGTH      256
 #define PO_NS_LENGTH 128		//ASCII 0~128
 
 struct po_super
@@ -76,14 +77,23 @@ struct po_ns_trie_node
 	struct po_ns_trie_node *ptrs[PO_NS_LENGTH];
 };
 
-extern struct po_ns_record * po_ns_search(const char* str,int strlen); //extren 关键字有的内核源码加了，有的地方没加，暂时加上吧
-extern struct po_ns_record * po_ns_insert(const char* str,int strlen);
-extern struct po_ns_record * po_ns_delete(const char* str,int strlen);
+struct po_ns_record * po_ns_search(const char* str,int strlen);
+struct po_ns_record * po_ns_insert(const char* str,int strlen);
+struct po_ns_record * po_ns_delete(const char* str,int strlen);
 
 int po_ns_need_burst(struct po_ns_container *container);
 struct po_ns_record *po_ns_burst(struct po_ns_trie_node *prev_trie_node,int prev_index);
 struct po_ns_record *po_ns_delete_record(struct po_ns_container *container, \
 	int depth, const char *str, int str_length);
+
 void po_super_init(struct po_super *po_super);
 struct po_super* po_get_super(void);
+
+/*
+ * po mapping and unmapping functions.
+ */
+long po_prepare_map_chunk(struct po_chunk *chunk, unsigned long prot, \
+        unsigned long flags);
+long get_chunk_size(struct po_chunk *chunk);
+
 #endif
