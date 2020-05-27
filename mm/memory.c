@@ -69,7 +69,6 @@
 #include <linux/userfaultfd_k.h>
 #include <linux/dax.h>
 #include <linux/oom.h>
-#include <linux/po_map.h>
 
 #include <asm/io.h>
 #include <asm/mmu_context.h>
@@ -1583,14 +1582,8 @@ void unmap_vmas(struct mmu_gather *tlb,
 	struct mm_struct *mm = vma->vm_mm;
 
 	mmu_notifier_invalidate_range_start(mm, start_addr, end_addr);
-	for ( ; vma && vma->vm_start < end_addr; vma = vma->vm_next) {
-		if (vma->vm_start >= PO_MAP_AREA_START &&
-                        vma->vm_end < PO_MAP_AREA_END  &&
-                        vma->vm_flags & VM_USE_PM) {
-			continue;
-                }
+	for ( ; vma && vma->vm_start < end_addr; vma = vma->vm_next)
 		unmap_single_vma(tlb, vma, start_addr, end_addr, NULL);
-	}
 	mmu_notifier_invalidate_range_end(mm, start_addr, end_addr);
 }
 

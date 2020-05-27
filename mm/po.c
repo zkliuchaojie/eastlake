@@ -12,14 +12,26 @@
 #include <linux/podtable.h>
 #include <linux/sched.h>
 #include <linux/po_map.h>
-#include <linux/mman.h>
+#include <uapi/asm-generic/mman-common.h>
 #include <uapi/asm-generic/fcntl.h>
 #include <linux/mman.h>
 #include <asm/tlbflush.h>
 #include <linux/pmalloc.h>
-#include <linux/mm.h>
+/*
+ * This micro should be defined in linux/po_metadata.h.
+ * Including the trailing NUL, the max length of po is 256.
+ */
+#ifndef MAX_PO_NAME_LENGTH
+#define MAX_PO_NAME_LENGTH	256
+#endif
 
 
+long po_map_chunk(struct po_chunk *chunk, unsigned long prot, \
+	unsigned long flags, unsigned long fixed_address);
+long po_nc_map(struct po_chunk *nc_map_metadata, \
+	unsigned long prot, unsigned long flags);
+void po_unmap_chunk(struct po_chunk *chunk, unsigned long fixed_address);
+void po_nc_unmap(struct po_chunk *nc_map_metadata);
 void po_free_chunk(struct po_chunk *chunk);
 void po_free_nc_chunk(struct po_chunk *nc_map_metadata);
 
@@ -344,7 +356,8 @@ SYSCALL_DEFINE6(po_mmap, unsigned long, addr, unsigned long, len, \
 	chunk = (struct po_chunk *)phys_to_virt(desc->data_pa);
 	pos = 0;
 	while (chunk != NULL) {
-		chunk_size = get_chunk_size(chunk);
+		chunk_size = IS_NC_MAP(chunk->start) ? \
+			((struct po_vma *)phys_to_virt(chunk->size))->size : chunk->size;
 		if (pos + chunk_size > pgoff) {
 			break;
 		}
@@ -353,12 +366,13 @@ SYSCALL_DEFINE6(po_mmap, unsigned long, addr, unsigned long, len, \
 	}
 	cnt = 0;
 	while (cnt < len) {
-		tmp = po_prepare_map_chunk(chunk, prot, flags | MAP_USE_PM);
+		tmp = po_map_chunk(chunk, prot, flags, 0);
 		if (tmp < 0)
 			return -ENOMEM;
 		if (retval == 0)
 			retval = tmp;
-		chunk_size = get_chunk_size(chunk);
+		chunk_size = IS_NC_MAP(chunk->start) ? \
+			((struct po_vma *)phys_to_virt(chunk->size))->size : chunk->size;
 		cnt += chunk_size;
 		chunk = phys_to_virt(chunk->next_pa);
 	}
@@ -366,43 +380,99 @@ SYSCALL_DEFINE6(po_mmap, unsigned long, addr, unsigned long, len, \
 }
 
 /*
- * it is like po_shrink, just not freeing actuall pages.
+ * For now, we define po_munmap as NOP.
  */
 SYSCALL_DEFINE2(po_munmap, unsigned long, addr, size_t, len)
 {
-	if ((PAGE_SIZE_REDEFINED - 1) & addr)
+	/* check addr and len */
+	if (((PAGE_SIZE_REDEFINED - 1) & addr) \
+		|| ((PAGE_SIZE_REDEFINED - 1) & len) \
+		|| (len < 0))
 		return -EINVAL;
-	if (!(addr >= PO_MAP_AREA_START && addr < PO_MAP_AREA_END))
+	if (addr < PO_MAP_AREA_START || addr + len > PO_MAP_AREA_END)
 		return -EINVAL;
-	return po_unmap_chunk(addr);
+	return 0;
+}\
+
+/*
+ * map a chunk or a non-continuous mapping.
+ * if succeeds, return mapped address, or NULL.
+ */
+long po_map_chunk(struct po_chunk *chunk, unsigned long prot, \
+	unsigned long flags, unsigned long fixed_address)
+{
+	unsigned long long cnt;
+	unsigned long address;
+	struct mm_struct *mm = current->mm;
+	pgd_t *pgd;
+	p4d_t *p4d;
+	pud_t *pud;
+	pmd_t *pmd;
+	pte_t *ptep;
+	pte_t entry;
+	pgprot_t pgprot;
+	vm_flags_t vm_flags = 0;
+
+	if (IS_NC_MAP(chunk->start))
+		return po_nc_map(phys_to_virt(chunk->size), prot, flags);
+
+	vm_flags |= calc_vm_prot_bits(prot, 0) | calc_vm_flag_bits(flags) |
+		mm->def_flags | VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC;
+	pgprot = vm_get_page_prot(vm_flags);
+	/*
+	 * For now, we do not consider huge page: 2MB and 1GB.
+	 * And we just assume that there are 4-level page tables.
+	 */
+	cnt = 0;
+	while (cnt < chunk->size) {
+		if (fixed_address == 0)
+			address = chunk->start + cnt + PO_MAP_AREA_START;
+		else
+			address = fixed_address + cnt;
+		pgd = pgd_offset(mm, address);
+		p4d = p4d_alloc(mm, pgd, address);
+		if (!p4d)
+			return NULL;
+		pud = pud_alloc(mm, p4d, address);
+		if (!pud)
+			return NULL;
+		pmd = pmd_alloc(mm, pud, address);
+		if (!pmd)
+			return NULL;
+		if (pte_alloc(mm, pmd, address))
+			return NULL;
+		entry = pfn_pte((chunk->start+cnt)>>PAGE_SHIFT_REDEFINED, pgprot);
+		if (prot & PROT_WRITE)
+			entry = pte_mkwrite(entry);
+		ptep = pte_offset_map(pmd, address);
+		set_pte(ptep, entry);
+
+		cnt += PAGE_SIZE_REDEFINED;
+	}
+	return chunk->start + PO_MAP_AREA_START;
 }
 
-long po_prepare_map_chunk(struct po_chunk *chunk, unsigned long prot, \
-	unsigned long flags)
+long po_nc_map(struct po_chunk *nc_map_metadata, unsigned long prot, unsigned long flags)
 {
-	struct po_chunk *nc_map_metadata;
+	struct po_chunk *chunk;
 	struct po_vma *vma;
 	unsigned long long cnt;
 
-	if (IS_NC_MAP(chunk->start)) {
-		nc_map_metadata = phys_to_virt(chunk->size);
-		if (!nc_map_metadata->next_pa)
-			return 0;
-		vma = phys_to_virt(nc_map_metadata->start);
-		chunk = phys_to_virt(nc_map_metadata->next_pa);
-		cnt = 0;
-		do {
-			if (po_map_chunk(chunk->start, chunk->size, prot, flags, vma->start+cnt) < 0)
-				return 0;
-			cnt += chunk->size;
-			if (chunk->next_pa == NULL)
-				break;
-			chunk = phys_to_virt(chunk->next_pa);
-		} while (cnt < nc_map_metadata->size);
-		return vma->start;
-	} else {
-		return po_map_chunk(chunk->start, chunk->size, prot, flags, chunk->start+PO_MAP_AREA_START);
-	}
+	nc_map_metadata->next_pa;
+	if (nc_map_metadata->next_pa == NULL)
+		return NULL;
+	vma = phys_to_virt(nc_map_metadata->start);
+	chunk = phys_to_virt(nc_map_metadata->next_pa);
+	cnt = 0;
+	do {
+		if (po_map_chunk(chunk, prot, flags, vma->start + cnt) < 0)
+			return NULL;
+		cnt += chunk->size;
+		if (chunk->next_pa == NULL)
+			break;
+		chunk = phys_to_virt(chunk->next_pa);
+	} while(cnt < nc_map_metadata->size);
+	return vma->start;
 }
 
 /*
@@ -502,21 +572,84 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 		desc->tail_pa = tail_chunk->next_pa;
 	}
 
-	retval = po_prepare_map_chunk(new_chunk, prot, flags | MAP_USE_PM);
+	/* mmap new_chunk */
+	retval = po_map_chunk(new_chunk, prot, flags, 0);
 	if (retval < 0)
 		return retval;
 	desc->size += len;
 	return retval;
 }
 
+void po_unmap_chunk(struct po_chunk *chunk, unsigned long fixed_address)
+{
+	unsigned long address;
+	unsigned long cnt;
+	struct mm_struct *mm = current->mm;
+	pgd_t *pgd;
+	p4d_t *p4d;
+	pud_t *pud;
+	pmd_t *pmd;
+	pte_t *ptep;
+
+	if (IS_NC_MAP(chunk->start))
+		return po_nc_unmap(phys_to_virt(chunk->size));
+
+	cnt = 0;
+	while (cnt < chunk->size) {
+		if (fixed_address == 0)
+			address = chunk->start + cnt + PO_MAP_AREA_START;
+		else
+			address = fixed_address + cnt;
+		cnt += PAGE_SIZE_REDEFINED;
+
+		pgd = pgd_offset(mm, address);
+		if (pgd_none_or_clear_bad(pgd))
+			continue;
+		p4d = p4d_offset(pgd, address);
+		if (p4d_none_or_clear_bad(p4d))
+			continue;
+		pud = pud_offset(p4d, address);
+		if (pud_none_or_clear_bad(pud))
+			continue;
+		pmd = pmd_offset(pud, address);
+		if (pmd_none_or_clear_bad(pmd))
+			continue;
+		ptep = pte_offset_map(pmd, address);
+		if (pte_none(*ptep))
+			continue;
+		pte_clear(mm, address, ptep);
+	}
+	/* the following line does not work, I do not know why */
+	//flush_tlb_mm_range(mm, addr, addr + curr->size, 0);
+	flush_tlb_mm(mm);
+	return;
+}
+
+void po_nc_unmap(struct po_chunk *nc_map_metadata)
+{
+	struct po_chunk *chunk;
+	struct po_vma *vma;
+	unsigned long long cnt;
+
+	if (nc_map_metadata->next_pa == NULL)
+		return;
+	vma = phys_to_virt(nc_map_metadata->start);
+	chunk = phys_to_virt(nc_map_metadata->next_pa);
+	cnt = 0;
+	do {
+		po_unmap_chunk(chunk, vma->start + cnt);
+		cnt += chunk->size;
+		if (chunk->next_pa == NULL)
+			break;
+		chunk = phys_to_virt(chunk->next_pa);
+	} while (cnt < nc_map_metadata->size);
+	po_vma_free(vma);
+}
+
 void po_free_chunk(struct po_chunk *chunk)
 {
-	if (IS_NC_MAP(chunk->start)) {
-		po_free_nc_chunk(phys_to_virt(chunk->size));
-		/* we should also free nc map metadata */
-		kpfree(chunk);
-		return;
-	}
+	if (IS_NC_MAP(chunk->start))
+		return po_free_nc_chunk(phys_to_virt(chunk->size));
 	/*
 	 * free pages.
 	 */
@@ -554,7 +687,6 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 	struct po_chunk *prev, *curr;
 	struct po_chunk *tail_chunk;
 	unsigned long start;
-	long ret = 0;
 
 	desc = pos_get(pod);
 	if (!desc)
@@ -596,9 +728,7 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 		return 0;
 
 unmap_and_free_chunk:
-	ret = po_unmap_chunk(addr);
-	if (ret < 0)
-		return ret;
+	po_unmap_chunk(curr, 0);
 	po_free_chunk(curr);
 	desc->size -= curr->size;
 	return 0;
@@ -674,11 +804,4 @@ SYSCALL_DEFINE2(po_fstat, unsigned long, pod, struct po_stat __user *, statbuf)
 	copy_to_user(statbuf, tmp, sizeof(struct po_stat));
 	kfree(tmp);
 	return 0;
-}
-
-long get_chunk_size(struct po_chunk *chunk)
-{
-	return IS_NC_MAP(chunk->start) ? \
-		((struct po_vma *)phys_to_virt(chunk->size))->size : \
-		chunk->size;
 }
