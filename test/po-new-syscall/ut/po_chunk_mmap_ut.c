@@ -34,7 +34,7 @@ TEST(po_mmap, simple_test)
 	c[0] = 'a';
 	//printf("%c\n", c[0]);
 
-	c = (char *)syscall(404, 0, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE, pod1, 0);
+	c = (char *)syscall(404, pod1, c, PROT_READ | PROT_WRITE, MAP_PRIVATE);
 	ASSERT_GE((unsigned long)c, 0);
 	c[0] = 'b';
 	//printf("%c\n", c[0]);
@@ -49,7 +49,6 @@ TEST(po_mmap, simple_test)
 /*
  * need to be automical.
  */
-
 TEST(po_mmap, just_can_read_test)
 {
 	char poname[] = "m";
@@ -63,7 +62,7 @@ TEST(po_mmap, just_can_read_test)
 	c = (char *)syscall(406, pod1, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE);
 	ASSERT_GE((unsigned long)c, 0);
 
-	c = (char *)syscall(404, 0, 4096, PROT_READ, MAP_PRIVATE, pod1, 0);
+	c = (char *)syscall(404, pod1, c, PROT_READ, MAP_PRIVATE);
 	ASSERT_GE(retval1, 0);
 	//c[0] = 'a';
 
@@ -87,7 +86,7 @@ TEST(po_mmap, close_is_okay_after_mapping_test)
 	c = (char *)syscall(406, pod1, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE);
 	ASSERT_GE((unsigned long)c, 0);
 
-	c = (char *)syscall(404, 0, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE, pod1, 0);
+	c = (char *)syscall(404, pod1, c, PROT_READ | PROT_WRITE, MAP_PRIVATE);
 	ASSERT_GE(retval1, 0);
 	c[0] = 'a';
 
@@ -99,9 +98,7 @@ TEST(po_mmap, close_is_okay_after_mapping_test)
 	retval1 = syscall(401, poname, 0);
 	ASSERT_EQ(retval1, 0);
 }
-/*
- * TODO: should be automatic.
- */
+
 TEST(po_mmap, can_not_access_a_mapping_after_unlink__test)
 {
 	char poname[] = "m";
@@ -116,7 +113,7 @@ TEST(po_mmap, can_not_access_a_mapping_after_unlink__test)
 	ASSERT_GE((unsigned long)c, 0);
 	c[0] = 'a';
 
-	c = (char *)syscall(404, 0, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE, pod1, 0);
+	c = (char *)syscall(404, pod1, c, PROT_READ | PROT_WRITE, MAP_PRIVATE);
 	ASSERT_GE((unsigned long)c, 0);
 	c[0] = 'b';
 
@@ -154,8 +151,8 @@ TEST(po_mmap, map_po_after_many_po_extend)
 	}
 
 	for (i = 0; i < 10; i++) {
-		c_array[i] = (char *)syscall(404, 0, 4096, PROT_READ | PROT_WRITE, \
-			MAP_PRIVATE, pod1, i*2*MAX_BUDDY_ALLOC_SIZE);
+		c_array[i] = (char *)syscall(404, pod1, c_array[i], PROT_READ | PROT_WRITE, \
+			MAP_PRIVATE);
 		ASSERT_GE((unsigned long)c_array[i], 0);
 		c_array[i][0] = 'a';
 		//printf("%p\n", c_array[i]);
