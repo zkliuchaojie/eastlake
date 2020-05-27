@@ -95,5 +95,6 @@ struct po_super* po_get_super(void);
 long po_prepare_map_chunk(struct po_chunk *chunk, unsigned long prot, \
         unsigned long flags);
 long get_chunk_size(struct po_chunk *chunk);
+long get_chunk_map_start(struct po_chunk *chunk);
 
 #endif
