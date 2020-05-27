@@ -169,12 +169,6 @@ SYSCALL_DEFINE1(po_unlink, const char __user *, poname)
 	int retval;
 	unsigned long cnt;
 	unsigned long address;
-	struct mm_struct *mm = current->mm;
-	pgd_t *pgd;
-	p4d_t *p4d;
-	pud_t *pud;
-	pmd_t *pmd;
-	pte_t *ptep;
 
 	kponame = kmalloc(MAX_PO_NAME_LENGTH, GFP_KERNEL);
 	if (!kponame)
@@ -299,30 +293,15 @@ SYSCALL_DEFINE1(po_close, unsigned int, pod)
 	return pos_delete(pod);
 }
 
-/*
- * Ignore addr parameter.
- * pgoff and len should be aligned
- */
-SYSCALL_DEFINE6(po_mmap, unsigned long, addr, unsigned long, len, \
-	unsigned long, prot, unsigned long, flags, \
-	unsigned long, pod, unsigned long, pgoff)
+SYSCALL_DEFINE4(po_chunk_mmap, unsigned long, pod, unsigned long, addr, \
+	unsigned long, prot, unsigned long, flags)
 {
 	struct po_desc *desc;
 	struct po_chunk *chunk;
-	unsigned long pos;
-	unsigned long cnt, chunk_size;
-	long retval = 0, tmp;
 
 	desc = pos_get(pod);
 	if (!desc)
 		return -EBADF;
-	/* check len and pgoff */
-	if ((pgoff < 0) || ((PAGE_SIZE_REDEFINED - 1) & pgoff) \
-		|| (pgoff >= desc->size))
-		return -EINVAL;
-	if ((len <= 0) || ((PAGE_SIZE_REDEFINED - 1) & len) \
-		|| (pgoff + len > desc->size))
-		return -EINVAL;
 	/* check prot, just support PROT_NONE, PROT_READ and PROT_WRITE */
 	if (prot != PROT_NONE \
 		&& prot != PROT_READ && prot != PROT_WRITE \
@@ -338,37 +317,24 @@ SYSCALL_DEFINE6(po_mmap, unsigned long, addr, unsigned long, len, \
 	if (flags != MAP_ANONYMOUS && flags != MAP_PRIVATE \
 		&& (flags != (MAP_ANONYMOUS | MAP_PRIVATE)))
 		return -EINVAL;
-	if ((flags & MAP_ANONYMOUS) && (pod != -1 || pgoff != 0))
+	if ((flags & MAP_ANONYMOUS) && (pod != -1))
 		return -EINVAL;
 
 	chunk = (struct po_chunk *)phys_to_virt(desc->data_pa);
-	pos = 0;
 	while (chunk != NULL) {
-		chunk_size = get_chunk_size(chunk);
-		if (pos + chunk_size > pgoff) {
+		if (addr == get_chunk_map_start(chunk))
 			break;
-		}
-		pos += chunk_size;
 		chunk = (struct po_chunk *)phys_to_virt(chunk->next_pa);
 	}
-	cnt = 0;
-	while (cnt < len) {
-		tmp = po_prepare_map_chunk(chunk, prot, flags | MAP_USE_PM);
-		if (tmp < 0)
-			return -ENOMEM;
-		if (retval == 0)
-			retval = tmp;
-		chunk_size = get_chunk_size(chunk);
-		cnt += chunk_size;
-		chunk = phys_to_virt(chunk->next_pa);
-	}
-	return retval;
+	if (!chunk)
+		return -EINVAL;
+	return po_prepare_map_chunk(chunk, prot, flags | MAP_USE_PM);
 }
 
 /*
  * it is like po_shrink, just not freeing actuall pages.
  */
-SYSCALL_DEFINE2(po_munmap, unsigned long, addr, size_t, len)
+SYSCALL_DEFINE1(po_chunk_munmap, unsigned long, addr)
 {
 	if ((PAGE_SIZE_REDEFINED - 1) & addr)
 		return -EINVAL;
@@ -568,8 +534,7 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 	if (desc->data_pa == NULL)
 		return 0;
 	curr = (struct po_chunk *)phys_to_virt(desc->data_pa);
-	start = IS_NC_MAP(curr->start) ? GET_NC_MAP(curr->start) \
-		: curr->start + PO_MAP_AREA_START;
+	start = get_chunk_map_start(curr);
 	if (addr == start) {
 		desc->data_pa = curr->next_pa;
 		if (desc->data_pa == NULL)
@@ -580,8 +545,7 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 	prev = curr;
 	curr = prev->next_pa == NULL ? NULL : phys_to_virt(prev->next_pa);
 	while (curr != NULL) {
-		start = IS_NC_MAP(curr->start) ? GET_NC_MAP(curr->start) \
-			: curr->start + PO_MAP_AREA_START;
+		start = get_chunk_map_start(curr);
 		if (addr == start) {
 			prev->next_pa = curr->next_pa;
 			if (curr == (struct po_chunk *)phys_to_virt(desc->tail_pa)) {
@@ -681,4 +645,12 @@ long get_chunk_size(struct po_chunk *chunk)
 	return IS_NC_MAP(chunk->start) ? \
 		((struct po_vma *)phys_to_virt(chunk->size))->size : \
 		chunk->size;
+}
+
+/* return the chunk's mapping addr */
+long get_chunk_map_start(struct po_chunk *chunk)
+{
+	return IS_NC_MAP(chunk->start) ? \
+		GET_NC_MAP(chunk->start) : \
+		(chunk->start + PO_MAP_AREA_START);
 }

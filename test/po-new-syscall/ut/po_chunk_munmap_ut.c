@@ -30,7 +30,7 @@ TEST(po_munmap, simple_test)
 	c[0] = 'a';
 	//printf("%c\n", c[0]);
 
-	retval1 = syscall(405, c, 4096);
+	retval1 = syscall(405, c);
 	ASSERT_EQ(retval1, 0);
 
 	retval1 = syscall(403, pod1, 0);
@@ -55,7 +55,7 @@ TEST(po_munmap, after_unmap_cannot_access_test)
 	c[0] = 'a';
 	//printf("%c\n", c[0]);
 
-	retval1 = syscall(405, c, 4096);
+	retval1 = syscall(405, c);
 	ASSERT_EQ(retval1, 0);
 
 	//c[0] = 'a';
