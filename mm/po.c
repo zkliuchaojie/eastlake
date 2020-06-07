@@ -18,7 +18,7 @@
 #include <asm/tlbflush.h>
 #include <linux/pmalloc.h>
 #include <linux/mm.h>
-
+#include <linux/string.h>
 
 void po_free_chunk(struct po_chunk *chunk);
 void po_free_nc_chunk(struct po_chunk *nc_map_metadata);
@@ -297,7 +297,7 @@ SYSCALL_DEFINE4(po_chunk_mmap, unsigned long, pod, unsigned long, addr, \
 	unsigned long, prot, unsigned long, flags)
 {
 	struct po_desc *desc;
-	struct po_chunk *chunk;
+	struct po_chunk *chunk, *chunk_pa;
 
 	desc = pos_get(pod);
 	if (!desc)
@@ -320,13 +320,14 @@ SYSCALL_DEFINE4(po_chunk_mmap, unsigned long, pod, unsigned long, addr, \
 	if ((flags & MAP_ANONYMOUS) && (pod != -1))
 		return -EINVAL;
 
-	chunk = (struct po_chunk *)phys_to_virt(desc->data_pa);
-	while (chunk != NULL) {
+	chunk_pa = desc->data_pa;
+	while (chunk_pa != NULL) {
+		chunk = (struct po_chunk *)phys_to_virt(chunk_pa);
 		if (addr == get_chunk_map_start(chunk))
 			break;
-		chunk = (struct po_chunk *)phys_to_virt(chunk->next_pa);
+		chunk_pa = chunk->next_pa;
 	}
-	if (!chunk)
+	if (!chunk_pa)
 		return -EINVAL;
 	return po_prepare_map_chunk(chunk, prot, flags | MAP_USE_PM);
 }
@@ -636,6 +637,47 @@ SYSCALL_DEFINE2(po_fstat, unsigned long, pod, struct po_stat __user *, statbuf)
 	tmp->st_gid = desc->gid;
 	tmp->st_size = desc->size;
 	copy_to_user(statbuf, tmp, sizeof(struct po_stat));
+	kfree(tmp);
+	return 0;
+}
+
+SYSCALL_DEFINE4(po_chunk_next, unsigned long, pod, unsigned long, last, \
+	size_t, size, unsigned long __user *, addrbuf)
+{
+	struct po_desc *desc;
+	unsigned long *tmp;
+	struct po_chunk *chunk, *chunk_pa;
+	int cnt;
+
+	/* check addrbuf */
+	if (!access_ok(VERIFY_WRITE, addrbuf, sizeof(unsigned long)*size))
+		return -EFAULT;
+	desc = pos_get(pod);
+	if (!desc)
+		return -EBADF;
+	tmp = kmalloc(sizeof(unsigned long)*size, GFP_KERNEL);
+	if (!tmp)
+		return -ENOMEM;
+	memset(tmp, 0, sizeof(unsigned long)*size);
+
+	chunk_pa = desc->data_pa;
+	while (chunk_pa != NULL) {
+		chunk = (struct po_chunk *)phys_to_virt(chunk_pa);
+                if (last == NULL || last == get_chunk_map_start(chunk)) {
+			if (last != NULL)
+				chunk_pa = chunk->next_pa;
+			cnt = 0;
+			while (chunk_pa && cnt < size) {
+				chunk = (struct po_chunk *)phys_to_virt(chunk_pa);
+				tmp[cnt] = get_chunk_map_start(chunk);
+				cnt++;
+				chunk_pa = chunk->next_pa;
+			}
+			break;
+		}
+		chunk_pa = chunk->next_pa;
+	}
+	copy_to_user(addrbuf, tmp, sizeof(unsigned long)*size);
 	kfree(tmp);
 	return 0;
 }
