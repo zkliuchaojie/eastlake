@@ -2,13 +2,15 @@
 	$(OBJDIR)/po_unlink_ut $(OBJDIR)/po_open_ut \
 	$(OBJDIR)/po_close_ut $(OBJDIR)/po_chunk_mmap_ut \
 	$(OBJDIR)/po_chunk_munmap_ut $(OBJDIR)/po_extend_ut \
-	$(OBJDIR)/po_shrink_ut $(OBJDIR)/po_stat_ut
+	$(OBJDIR)/po_shrink_ut $(OBJDIR)/po_stat_ut \
+	$(OBJDIR)/po_chunk_next_ut
 
 all-ut: $(OBJDIR)/po_map_area_start_addr_ut $(OBJDIR)/po_creat_ut \
 	$(OBJDIR)/po_unlink_ut $(OBJDIR)/po_open_ut \
 	$(OBJDIR)/po_close_ut $(OBJDIR)/po_chunk_mmap_ut \
 	$(OBJDIR)/po_chunk_munmap_ut $(OBJDIR)/po_extend_ut \
-	$(OBJDIR)/po_shrink_ut $(OBJDIR)/po_stat_ut
+	$(OBJDIR)/po_shrink_ut $(OBJDIR)/po_stat_ut \
+	$(OBJDIR)/po_chunk_next_ut
 
 $(OBJDIR)/po_map_area_start_addr_ut.o: $(UTDIR)/po_map_area_start_addr_ut.c
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -79,5 +81,12 @@ $(OBJDIR)/po_stat_ut: $(OBJDIR)/po_stat_ut.o \
 	$(OBJDIR)/ctest_main.a
 	$(CC) $(CFLAGS) -lpthread $^ -o $@
 	./$(OBJDIR)/po_stat_ut
+
+$(OBJDIR)/po_chunk_next_ut.o: $(UTDIR)/po_chunk_next_ut.c
+	$(CC) $(CFLAGS) -c $< -o $@
+$(OBJDIR)/po_chunk_next_ut: $(OBJDIR)/po_chunk_next_ut.o \
+	$(OBJDIR)/ctest_main.a
+	$(CC) $(CFLAGS) -lpthread $^ -o $@
+	./$(OBJDIR)/po_chunk_next_ut
 
 # next ut for a file, it's yours
