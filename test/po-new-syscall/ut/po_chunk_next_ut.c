@@ -31,7 +31,7 @@ TEST(po_chunk_next, simple_test)
 
 	c = (char *)syscall(406, pod1, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE);
 	ASSERT_GE((unsigned long)c, 0);
-	
+
 	retval1 = syscall(410, pod1, NULL, 1, addrbuf);
 	ASSERT_EQ(retval1, 0);
 	ASSERT_EQ(c, addrbuf[0]);
@@ -64,7 +64,6 @@ TEST(po_chunk_next, extend_twice_test)
 	c2 = (char *)syscall(406, pod1, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE);
 	ASSERT_GE((unsigned long)c2, 0);
 
-
 	retval1 = syscall(410, pod1, NULL, 1, addrbuf);
 	ASSERT_EQ(retval1, 0);
 	ASSERT_EQ(c1, addrbuf[0]);
@@ -73,7 +72,7 @@ TEST(po_chunk_next, extend_twice_test)
 	ASSERT_EQ(retval1, 0);
 	ASSERT_EQ(c1, addrbuf[0]);
 	ASSERT_EQ(c2, addrbuf[1]);
-	
+
 	retval1 = syscall(410, pod1, c1, 2, addrbuf);
 	ASSERT_EQ(retval1, 0);
 	ASSERT_EQ(c2, addrbuf[0]);
@@ -83,7 +82,7 @@ TEST(po_chunk_next, extend_twice_test)
 	ASSERT_EQ(retval1, 0);
 	ASSERT_EQ(NULL, addrbuf[0]);
 	ASSERT_EQ(NULL, addrbuf[1]);
-	
+
 	retval1 = syscall(403, pod1, 0);
 	ASSERT_GE(retval1, 0);
 
