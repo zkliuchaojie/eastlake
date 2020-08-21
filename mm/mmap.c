@@ -2813,9 +2813,9 @@ long po_map_chunk(unsigned long start, size_t len, unsigned long prot, \
 	vm_flags_t vm_flags = 0;
 
 	// check if the chunk is mapped already.
-	vma = find_vma(mm, fixed_address);
-        if (vma && vma->vm_start == fixed_address)
-                return fixed_address;
+	// vma = find_vma(mm, fixed_address);
+        // if (vma && vma->vm_start == fixed_address)
+        //        return fixed_address;
 
 	vm_flags |= calc_vm_prot_bits(prot, 0) | calc_vm_flag_bits(flags) |
 		mm->def_flags | VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC;
@@ -2849,11 +2849,11 @@ long po_map_chunk(unsigned long start, size_t len, unsigned long prot, \
 		cnt += PAGE_SIZE_REDEFINED;
 	}
 	/* insert vma(fixed_address) into mm_struct */
-	if (down_write_killable(&mm->mmap_sem))
-		return -EINTR;
+	//if (down_write_killable(&mm->mmap_sem))
+	//	return -EINTR;
 	/* uf should be NULL, because we won't use that logic */
-	mmap_region(NULL, fixed_address, len, vm_flags, 0, NULL);
-	up_write(&mm->mmap_sem);
+	//mmap_region(NULL, fixed_address, len, vm_flags, 0, NULL);
+	//up_write(&mm->mmap_sem);
 	return fixed_address;
 }
 
@@ -2869,32 +2869,32 @@ long po_unmap_chunk(unsigned long start)
         struct mm_struct *mm = current->mm;
         struct mmu_gather tlb;
 
-        vma = find_vma(mm, start);
-        if (!vma)
-                return 0;
+        //vma = find_vma(mm, start);
+        //if (!vma)
+        //        return 0;
 
-        prev = vma->vm_prev;
-        end = vma->vm_end;
-        if (vma->vm_start >= end)
-                return 0;
+        //prev = vma->vm_prev;
+        //end = vma->vm_end;
+        //if (vma->vm_start >= end)
+        //        return 0;
 
-        if (down_write_killable(&mm->mmap_sem))
-                return -EINTR;
+        //if (down_write_killable(&mm->mmap_sem))
+        //        return -EINTR;
 
         /* remove vma from mm */
-        detach_vmas_to_be_unmapped(mm, vma, prev, end);
+        //detach_vmas_to_be_unmapped(mm, vma, prev, end);
 
 	/* free pagetables and update tlb */
-	next = prev ? prev->vm_next : mm->mmap;
-	tlb_gather_mmu(&tlb, mm, start, end);
-        free_pgtables(&tlb, vma, prev ? prev->vm_end : FIRST_USER_ADDRESS,
-                                 next ? next->vm_start : USER_PGTABLES_CEILING);
-        tlb_finish_mmu(&tlb, start, end);
+	//next = prev ? prev->vm_next : mm->mmap;
+	//tlb_gather_mmu(&tlb, mm, start, end);
+        //free_pgtables(&tlb, vma, prev ? prev->vm_end : FIRST_USER_ADDRESS,
+        //                         next ? next->vm_start : USER_PGTABLES_CEILING);
+        //tlb_finish_mmu(&tlb, start, end);
 
-        arch_unmap(mm, vma, start, end);
-        remove_vma_list(mm, vma);
+        //arch_unmap(mm, vma, start, end);
+        //remove_vma_list(mm, vma);
 
-        up_write(&mm->mmap_sem);
+        //up_write(&mm->mmap_sem);
         return 0;
 }
 

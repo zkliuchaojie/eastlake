@@ -329,7 +329,7 @@ SYSCALL_DEFINE4(po_chunk_mmap, unsigned long, pod, unsigned long, addr, \
 	}
 	if (!chunk_pa)
 		return -EINVAL;
-	return po_prepare_map_chunk(chunk, prot, flags | MAP_USE_PM);
+	return po_prepare_map_chunk(chunk, prot, flags);
 }
 
 /*
@@ -469,7 +469,7 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 		desc->tail_pa = tail_chunk->next_pa;
 	}
 
-	retval = po_prepare_map_chunk(new_chunk, prot, flags | MAP_USE_PM);
+	retval = po_prepare_map_chunk(new_chunk, prot, flags);
 	if (retval < 0)
 		return retval;
 	desc->size += len;
