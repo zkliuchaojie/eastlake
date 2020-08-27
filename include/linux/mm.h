@@ -244,6 +244,7 @@ extern unsigned int kobjsize(const void *objp);
 # define VM_PKEY_BIT4  VM_HIGH_ARCH_4
 #else
 # define VM_PKEY_BIT4  0
+#endif
 #ifdef ZONE_PM_EMU
 # define VM_USE_PM VM_HIGH_ARCH_5
 #else
