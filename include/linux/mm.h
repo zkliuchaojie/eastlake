@@ -27,6 +27,10 @@
 #include <linux/memremap.h>
 #include <linux/overflow.h>
 
+#ifdef CONFIG_ZONE_PM_EMU
+#include <linux/pmem.h>
+#endif
+
 struct mempolicy;
 struct anon_vma;
 struct anon_vma_chain;
@@ -2219,6 +2223,7 @@ extern void __init mmap_init(void);
 extern void show_mem(unsigned int flags, nodemask_t *nodemask);
 extern long si_mem_available(void);
 extern void si_meminfo(struct sysinfo * val);
+extern void get_pmeminfo(struct pmeminfo *val);
 extern void si_meminfo_node(struct sysinfo *val, int nid);
 #ifdef __HAVE_ARCH_RESERVED_KERNEL_PAGES
 extern unsigned long arch_reserved_kernel_pages(void);

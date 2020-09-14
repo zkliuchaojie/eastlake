@@ -75,6 +75,7 @@
 
 #ifdef CONFIG_ZONE_PM_EMU
 #include <asm/e820/api.h>
+#include <linux/pmem.h>
 #endif
 
 /* prevent >1 _updater_ of zone percpu pageset ->high and ->batch fields */
@@ -132,6 +133,10 @@ static DEFINE_SPINLOCK(managed_page_count_lock);
 unsigned long totalram_pages __read_mostly;
 unsigned long totalreserve_pages __read_mostly;
 unsigned long totalcma_pages __read_mostly;
+
+#ifdef CONFIG_ZONE_PM_EMU
+unsigned long totalpmem_pages __read_mostly;
+#endif
 
 int percpu_pagelist_fraction;
 gfp_t gfp_allowed_mask __read_mostly = GFP_BOOT_MASK;
@@ -4950,6 +4955,16 @@ void si_meminfo(struct sysinfo *val)
 
 EXPORT_SYMBOL(si_meminfo);
 
+#ifdef CONFIG_ZONE_PM_EMU
+void get_pmeminfo(struct pmeminfo *val)
+{
+	val->totalpmem = totalpmem_pages;
+	val->freepmem = global_pm_zone_free_pages();
+}
+
+EXPORT_SYMBOL(get_pmeminfo);
+#endif
+
 #ifdef CONFIG_NUMA
 void si_meminfo_node(struct sysinfo *val, int nid)
 {
@@ -6740,6 +6755,10 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 				if(e820_range_to_nid(entry->addr) == 0)
 					po_super_init(&(super->po_super));
 			//}
+
+			// update totalpmem_pages, it is a global variable
+			totalpmem_pages += super->size;
+
 			return;
 		}
 	}

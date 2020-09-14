@@ -21,6 +21,10 @@
 #include <asm/pgtable.h>
 #include "internal.h"
 
+#ifdef CONFIG_ZONE_PM_EMU
+#include <linux/pmem.h>
+#endif
+
 void __attribute__((weak)) arch_report_meminfo(struct seq_file *m)
 {
 }
@@ -34,6 +38,7 @@ static void show_val_kb(struct seq_file *m, const char *s, unsigned long num)
 static int meminfo_proc_show(struct seq_file *m, void *v)
 {
 	struct sysinfo i;
+	struct pmeminfo pi;
 	unsigned long committed;
 	long cached;
 	long available;
@@ -42,6 +47,7 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 
 	si_meminfo(&i);
 	si_swapinfo(&i);
+	get_pmeminfo(&pi);
 	committed = percpu_counter_read_positive(&vm_committed_as);
 
 	cached = global_node_page_state(NR_FILE_PAGES) -
@@ -81,6 +87,11 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 #ifndef CONFIG_MMU
 	show_val_kb(m, "MmapCopy:       ",
 		    (unsigned long)atomic_long_read(&mmap_pages_allocated));
+#endif
+
+#ifdef CONFIG_ZONE_PM_EMU
+	show_val_kb(m, "PMemTotal:	", pi.totalpmem);
+	show_val_kb(m, "PMemFree:	", pi.freepmem);
 #endif
 
 	show_val_kb(m, "SwapTotal:      ", i.totalswap);
