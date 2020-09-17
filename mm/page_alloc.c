@@ -1341,6 +1341,7 @@ static void __free_pt_pages_ok(struct pt_page *pt_page, unsigned int order)
 	unsigned long page_idx;
 	struct pt_page *buddy;	
 	struct pm_super *super;
+	unsigned int saved_order = order;
 
 	pm_zone = pt_page_zone(pt_page);
 	super = pm_zone->super;
@@ -1369,7 +1370,9 @@ static void __free_pt_pages_ok(struct pt_page *pt_page, unsigned int order)
 	// we can put it to tail later
 	list_add(&pt_page->lru, &super->pt_free_area[order].free_list);
 	super->pt_free_area[order].nr_free++;
-	
+
+	super->free += (1UL << saved_order);
+
 	spin_unlock(&pm_zone->lock);
 	local_irq_restore(flags);	
 }
@@ -4572,6 +4575,8 @@ __alloc_pt_pages_nodemask(gpfp_t gpfp_mask, unsigned int order, int preferred_ni
 		break;
 	}
 	atomic_set(&(pt_page)->_refcount, 1);
+	pm_super->free -= (1UL << order);
+
 	spin_unlock(&pm_zone->lock);
 	local_irq_restore(flags);
 	return pt_page;
