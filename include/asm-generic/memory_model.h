@@ -20,7 +20,7 @@
 
 #ifdef CONFIG_ZONE_PM_EMU
 #define arch_local_pt_page_offset(pfn, nid)     \
-        ((pfn) - NODE_DATA(nid)->node_pm_zones[ZONE_PM_EMU].start_pfn)
+        ((pfn) - NODE_DATA(nid)->node_pm_zones[ZONE_PM_EMU].super->buddy_start_pfn)
 #endif
 
 #ifndef arch_local_page_offset
@@ -41,9 +41,9 @@
 				 ARCH_PFN_OFFSET)
 
 #ifdef CONFIG_ZONE_PM_EMU
-#define __pfn_to_pt_page(pfn)      ((NODE_DATA(0)->node_pt_map) + ((pfn) - NODE_DATA(0)->node_pm_zones[ZONE_PM_EMU].start_pfn))
+#define __pfn_to_pt_page(pfn)      ((NODE_DATA(0)->node_pt_map) + ((pfn) - NODE_DATA(0)->node_pm_zones[ZONE_PM_EMU].super->buddy_start_pfn))
 #define __pt_page_to_pfn(page)     ((unsigned long)((page) - (NODE_DATA(0)->node_pt_map)) + \
-                                 NODE_DATA(0)->node_pm_zones[ZONE_PM_EMU].start_pfn)
+                                 NODE_DATA(0)->node_pm_zones[ZONE_PM_EMU].super->buddy_start_pfn)
 #endif
 
 #elif defined(CONFIG_DISCONTIGMEM)
@@ -72,7 +72,7 @@
 ({      struct pt_page *__pg = (pg);                                    \
         struct pglist_data *__pgdat = NODE_DATA(pt_page_to_nid(__pg));  \
         (unsigned long)(__pg - __pgdat->node_pt_map) +                  \
-         __pgdat->node_pm_zones[ZONE_PM_EMU].start_pfn;                                 \
+         __pgdat->node_pm_zones[ZONE_PM_EMU].super->buddy_start_pfn;                                 \
 })
 #endif
 
@@ -84,9 +84,9 @@
 
 /* do not support */
 #ifdef CONFIG_ZONE_PM_EMU
-#define __pfn_to_pt_page(pfn)      ((NODE_DATA(0)->node_pt_map) + ((pfn) - NODE_DATA(0)->node_pm_zones[ZONE_PM_EMU].start_pfn))
+#define __pfn_to_pt_page(pfn)      ((NODE_DATA(0)->node_pt_map) + ((pfn) - NODE_DATA(0)->node_pm_zones[ZONE_PM_EMU].super->buddy_start_pfn))
 #define __pt_page_to_pfn(page)     ((unsigned long)((page) - (NODE_DATA(0)->node_pt_map)) + \
-                                 NODE_DATA(0)->node_pm_zones[ZONE_PM_EMU].start_pfn)
+                                 NODE_DATA(0)->node_pm_zones[ZONE_PM_EMU].super->buddy_start_pfn)
 #endif
 
 #elif defined(CONFIG_SPARSEMEM)
@@ -107,9 +107,9 @@
 })
 
 #ifdef CONFIG_ZONE_PM_EMU
-#define __pfn_to_pt_page(pfn)      ((NODE_DATA(0)->node_pt_map) + ((pfn) - NODE_DATA(0)->node_pm_zones[ZONE_PM_EMU].start_pfn))
+#define __pfn_to_pt_page(pfn)      ((NODE_DATA(0)->node_pt_map) + ((pfn) - NODE_DATA(0)->node_pm_zones[ZONE_PM_EMU].super->buddy_start_pfn))
 #define __pt_page_to_pfn(page)     ((unsigned long)((page) - (NODE_DATA(0)->node_pt_map)) + \
-                                 NODE_DATA(0)->node_pm_zones[ZONE_PM_EMU].start_pfn)
+                                 NODE_DATA(0)->node_pm_zones[ZONE_PM_EMU].super->buddy_start_pfn)
 #endif
 #endif /* CONFIG_FLATMEM/DISCONTIGMEM/SPARSEMEM */
 
