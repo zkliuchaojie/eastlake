@@ -1372,7 +1372,7 @@ static void __free_pt_pages_ok(struct pt_page *pt_page, unsigned int order)
 	super->pt_free_area[order].nr_free++;
 
 	super->free += (1UL << saved_order);
-	pm_super->used -= (1UL << order);
+	pm_super->used -= (1UL << saved_order);
 
 	spin_unlock(&pm_zone->lock);
 	local_irq_restore(flags);	
