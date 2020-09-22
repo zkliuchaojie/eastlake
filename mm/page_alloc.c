@@ -1372,6 +1372,7 @@ static void __free_pt_pages_ok(struct pt_page *pt_page, unsigned int order)
 	super->pt_free_area[order].nr_free++;
 
 	super->free += (1UL << saved_order);
+	super->used -= (1UL << saved_order);
 
 	spin_unlock(&pm_zone->lock);
 	local_irq_restore(flags);	
@@ -4576,6 +4577,7 @@ __alloc_pt_pages_nodemask(gpfp_t gpfp_mask, unsigned int order, int preferred_ni
 	}
 	atomic_set(&(pt_page)->_refcount, 1);
 	pm_super->free -= (1UL << order);
+	pm_super->used += (1UL << order);
 
 	spin_unlock(&pm_zone->lock);
 	local_irq_restore(flags);
@@ -6751,9 +6753,9 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 			
 				// pt_page init
 				pt_page_init(pgdat);
-					
-				super->used = (size >> PAGE_SHIFT) + 1;	
-				super->free = super->size - super->used;
+				
+				super->free = super->buddy_managed_pages;
+				super->used = super->size - super->free;	
 			
 				super->initialized = true;
 				super->magic = PM_MAGIC;
