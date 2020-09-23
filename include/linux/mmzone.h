@@ -23,11 +23,22 @@
 
 /* Free memory management - zoned buddy allocator.  */
 #ifndef CONFIG_FORCE_MAX_ZONEORDER
-#define MAX_ORDER 11
+#define MAX_ORDER 16
 #else
 #define MAX_ORDER CONFIG_FORCE_MAX_ZONEORDER
 #endif
 #define MAX_ORDER_NR_PAGES (1 << (MAX_ORDER - 1))
+
+/*
+#ifdef CONFIG_ZONE_PM_EMU
+#ifdef CONFIG_SPARSEMEM
+#include <asm/sparsemem.h>
+#define PM_MAX_ORDER SECTION_SIZE_BITS
+#else
+#define PM_MAX_ORDER MAX_ORDER
+#endif
+#endif
+*/
 
 /*
  * PAGE_ALLOC_COSTLY_ORDER is the order at which allocations are deemed
@@ -1162,9 +1173,11 @@ static inline unsigned long early_pfn_to_nid(unsigned long pfn)
 #define SECTION_BLOCKFLAGS_BITS \
 	((1UL << (PFN_SECTION_SHIFT - pageblock_order)) * NR_PAGEBLOCK_BITS)
 
+/*
 #if (MAX_ORDER - 1 + PAGE_SHIFT) > SECTION_SIZE_BITS
 #error Allocator MAX_ORDER exceeds SECTION_SIZE
 #endif
+*/
 
 static inline unsigned long pfn_to_section_nr(unsigned long pfn)
 {

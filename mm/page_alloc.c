@@ -4488,6 +4488,8 @@ __alloc_pages_nodemask(gfp_t gfp_mask, unsigned int order, int preferred_nid,
 	page = get_page_from_freelist(alloc_mask, order, alloc_flags, &ac);
 	if (likely(page))
 		goto out;
+	/* try to extend memory capacity with pmem */
+	extend_memory_with_pmem();
 
 	/*
 	 * Apply scoped allocation constraints. This is mainly about GFP_NOFS
