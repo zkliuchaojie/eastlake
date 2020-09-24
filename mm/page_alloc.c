@@ -76,6 +76,7 @@
 #ifdef CONFIG_ZONE_PM_EMU
 #include <asm/e820/api.h>
 #include <linux/pmem.h>
+#include <linux/pflush.h>
 #endif
 
 /* prevent >1 _updater_ of zone percpu pageset ->high and ->batch fields */
@@ -205,6 +206,8 @@ static void __free_pages_ok(struct page *page, unsigned int order);
 
 #ifdef CONFIG_ZONE_PM_EMU
 static void __free_pt_pages_ok(struct pt_page *pt_page, unsigned int order);
+
+static void __free_pt_pages_ok_without_clwb(struct pt_page *pt_page, unsigned int order);
 #endif
 
 /*
@@ -1337,7 +1340,108 @@ static void __free_pt_pages_ok(struct pt_page *pt_page, unsigned int order)
 {
 	unsigned long flags;
 	struct pm_zone *pm_zone;
-	unsigned long buddy_idx = 0, combinded_idx = 0;
+	unsigned long buddy_idx = 0, combined_idx = 0;
+	unsigned long page_idx;
+	struct pt_page *buddy;	
+	struct pm_super *super;
+	unsigned int saved_order = order;
+	unsigned int i;
+
+	pm_zone = pt_page_zone(pt_page);
+	super = pm_zone->super;
+	page_idx = pt_page - pm_zone->super->first_page;
+	local_irq_save(flags);
+	spin_lock(&pm_zone->lock);
+	
+	// free here
+	// probe first, log it and then operate
+	super->log4free.page = pt_page;
+	super->log4free.order = order;
+	i = 0;
+	while (order < MAX_ORDER - 1) {
+		buddy_idx = __find_pt_buddy_index(page_idx, order);
+		buddy = pt_page + (buddy_idx - page_idx);
+		if (!pt_page_is_buddy(pt_page, buddy, order))
+			break;
+		// list_del(&buddy->lru);
+		// super->pt_free_area[order].nr_free--;
+		
+		// remove the buddy
+		// rmv_pt_page_order(buddy);
+		
+		// log
+		super->log4free.prev[i] = buddy->lru.prev;
+		super->log4free.next[i] = buddy->lru.next;
+		super->log4free.nr_frees[i] = super->pt_free_area[order].nr_free - 1;
+
+		combined_idx = __find_pt_combined_index(page_idx, order);
+		pt_page = pt_page + (combined_idx - page_idx);	// pt_page now is the combined one
+		page_idx = combined_idx;
+		order++;
+
+		i++;
+	}
+	super->log4free.combined_order = order;
+
+	// prev is the head, no need
+	super->log4free.next[i] = super->pt_free_area[order].free_list.next;
+	super->log4free.nr_frees[i] = super->pt_free_area[order].nr_free + 1;
+	flush_clwb(super->log4free.prev, sizeof(super->log4free.prev) + sizeof(super->log4free.next) + sizeof(super->log4free.nr_frees));
+	_mm_sfence();
+	super->log4free.free = super->free + (1UL << saved_order);
+	super->log4free.used = super->used -  (1UL << saved_order);
+	super->log4free.valid = true;
+	flush_clwb(&(super->log4free), 64);
+	_mm_sfence();
+	// redo done
+
+	// now we can modify it
+	order = saved_order;
+	while (order < MAX_ORDER - 1) {
+		buddy_idx = __find_pt_buddy_index(page_idx, order);
+		buddy = pt_page + (buddy_idx - page_idx);
+		if (!pt_page_is_buddy(pt_page, buddy, order))
+			break;
+		list_del_with_clwb(&buddy->lru);
+		super->pt_free_area[order].nr_free--;
+		flush_clwb(&(super->pt_free_area[order].nr_free), sizeof(super->pt_free_area[order].nr_free));
+
+		// remove the buddy
+		rmv_pt_page_order(buddy);
+		flush_clwb(&(buddy->private), sizeof(buddy->private));
+
+		combined_idx = __find_pt_combined_index(page_idx, order);
+		pt_page = pt_page + (combined_idx - page_idx);	// pt_page now is the combined one
+		page_idx = combined_idx;
+		order++;
+	}
+
+	// we can put it to tail later
+	list_add_with_clwb(&pt_page->lru, &super->pt_free_area[order].free_list);
+	super->pt_free_area[order].nr_free++;
+	flush_clwb(&(super->pt_free_area[order].nr_free), sizeof(super->pt_free_area[order].nr_free));
+
+	pt_page->private = order;
+	flush_clwb(&(pt_page->private), sizeof(pt_page->private));
+
+	super->free += (1UL << saved_order);
+	super->used -= (1UL << saved_order);
+	flush_clwb(super, 64);
+	_mm_sfence();
+
+	super->log4free.valid = false;
+	flush_clwb(&(super->log4free.valid), sizeof(super->log4free.valid));
+	_mm_sfence();
+
+	spin_unlock(&pm_zone->lock);
+	local_irq_restore(flags);	
+}
+
+static void __free_pt_pages_ok_without_clwb(struct pt_page *pt_page, unsigned int order)
+{
+	unsigned long flags;
+	struct pm_zone *pm_zone;
+	unsigned long buddy_idx = 0, combined_idx = 0;
 	unsigned long page_idx;
 	struct pt_page *buddy;	
 	struct pm_super *super;
@@ -1360,9 +1464,9 @@ static void __free_pt_pages_ok(struct pt_page *pt_page, unsigned int order)
 		
 		// remove the buddy
 		rmv_pt_page_order(buddy);
-		combinded_idx = __find_pt_combined_index(page_idx, order);
-		pt_page = pt_page + (combinded_idx - page_idx);
-		page_idx = combinded_idx;
+		combined_idx = __find_pt_combined_index(page_idx, order);
+		pt_page = pt_page + (combined_idx - page_idx);
+		page_idx = combined_idx;
 		order++;
 	}
 
@@ -1372,11 +1476,12 @@ static void __free_pt_pages_ok(struct pt_page *pt_page, unsigned int order)
 	super->pt_free_area[order].nr_free++;
 
 	super->free += (1UL << saved_order);
-	pm_super->used -= (1UL << saved_order);
+	super->used -= (1UL << saved_order);
 
 	spin_unlock(&pm_zone->lock);
 	local_irq_restore(flags);	
 }
+
 #endif
 
 static void __init __free_pages_boot_core(struct page *page, unsigned int order)
@@ -4534,6 +4639,9 @@ __alloc_pt_pages_nodemask(gpfp_t gpfp_mask, unsigned int order, int preferred_ni
 	unsigned long flags;
 	int low, high;
 	unsigned long size;
+	unsigned i, j;
+	struct pt_free_area *cur_area;
+	struct pt_page *next;
 		
 	if (unlikely(order >= MAX_ORDER)) {
 		WARN_ON_ONCE(!(gpfp_mask & __GPFP_NOWARN));
@@ -4555,11 +4663,39 @@ __alloc_pt_pages_nodemask(gpfp_t gpfp_mask, unsigned int order, int preferred_ni
 			continue;
 		}
 		
+		// we need to record undo log first
+		i = 0;
+		j = order;
+		for (; j < current_order; j++) {
+			cur_area = pm_super->pt_free_area + j;
+			pm_super->log4alloc.next[i] = cur_area->free_list.next;
+			pm_super->log4alloc.nr_frees[i] = cur_area->nr_free;
+			i++;
+		}
+		// this is the page to alloc from
+		cur_area = pm_super->pt_free_area + j;
+		next = list_entry(cur_area->free_list.next, struct pt_page, lru);	// the page to alloc from
+		pm_super->log4alloc.next[i] = cur_area->free_list.next->next;
+		pm_super->log4alloc.nr_frees[i] = cur_area->nr_free;
+		flush_clwb(&(pm_super->log4alloc.next), sizeof(pm_super->log4alloc.next) + sizeof(pm_super->log4alloc.nr_frees));
+		_mm_sfence();
+		pm_super->log4alloc.free = pm_super->free;
+		pm_super->log4alloc.used = pm_super->used;
+		pm_super->log4alloc.page = next;
+		pm_super->log4alloc.order = current_order;
+		pm_super->log4alloc.alloc_order = order;
+		pm_super->log4alloc.valid = true;
+		flush_clwb(&(pm_super->log4alloc.valid), 64);
+		_mm_sfence();
+		// undo done
+
 		// we need to lock here
 		pt_page = list_entry(area->free_list.next, struct pt_page, lru);
-		list_del(&pt_page->lru);
-		rmv_pt_page_order(pt_page);	
+		list_del_with_clwb(&pt_page->lru);
+		rmv_pt_page_order(pt_page);	// persist later
 		area->nr_free--;
+		flush_clwb(&(area->nr_free), sizeof(area->nr_free));	// we can use ntstore later
+
 		// expand page
 		low = order;
 		high = current_order;
@@ -4569,15 +4705,32 @@ __alloc_pt_pages_nodemask(gpfp_t gpfp_mask, unsigned int order, int preferred_ni
 			high--;
 			size >>= 1;
 			// later we can add to tail, performance first
-			list_add(&pt_page[size].lru, &area->free_list);
+			list_add_with_clwb(&pt_page[size].lru, &area->free_list);
 			area->nr_free++;
+			flush_clwb(&(area->nr_free), sizeof(area->nr_free));
 			pt_page[size].private = high;
+			flush_clwb(&(pt_page[size].private), sizeof(pt_page[size].private));
 		}
 		break;
 	}
+	// when no empty page exists
+	if (unlikely(pt_page == NULL)) {
+		spin_unlock(&pm_zone->lock);
+		local_irq_restore(flags);
+		return pt_page;
+	}
+
 	atomic_set(&(pt_page)->_refcount, 1);
+	flush_clwb(pt_page, sizeof(struct pt_page)); // _refcount & private
 	pm_super->free -= (1UL << order);
 	pm_super->used += (1UL << order);
+	flush_clwb(pm_super, 64);
+	_mm_sfence();
+
+	// we invalidate the log
+	pm_super->log4alloc.valid = false;
+	flush_clwb(&(pm_super->log4alloc.valid), sizeof(pm_super->log4alloc.valid));
+	_mm_sfence(); // avoid undo it but actually alloc sucessfully
 
 	spin_unlock(&pm_zone->lock);
 	local_irq_restore(flags);
@@ -4629,6 +4782,15 @@ void __free_pt_pages(struct pt_page *pt_page, unsigned int order)
 }
 
 EXPORT_SYMBOL(__free_pt_pages);
+
+void __free_pt_pages_without_clwb(struct pt_page *pt_page, unsigned int order)
+{
+	if (put_pt_page_testzero(pt_page)) {
+		__free_pt_pages_ok_without_clwb(pt_page, order);
+	}
+}
+
+EXPORT_SYMBOL(__free_pt_pages_without_clwb);
 #endif
 
 void free_pages(unsigned long addr, unsigned int order)
@@ -4647,6 +4809,16 @@ void free_pt_pages(struct pt_page *pt_page, unsigned int order)
 {
 	__free_pt_pages(pt_page, order);
 }
+
+EXPORT_SYMBOL(free_pt_pages);
+
+inline
+void free_pt_pages_without_clwb(struct pt_page *pt_page, unsigned int order)
+{
+	__free_pt_pages_without_clwb(pt_page, order);
+}
+
+EXPORT_SYMBOL(free_pt_pages_without_clwb);
 #endif
 
 /*
@@ -6688,7 +6860,7 @@ void pt_page_init(pg_data_t *pgdat)
 	}
 	for (i = 0; i < super->buddy_managed_pages; i++) {
 		pt_page = map + i;
-		free_pt_pages(pt_page, 0);
+		free_pt_pages_without_clwb(pt_page, 0);
 	}
 }
 
@@ -6731,7 +6903,7 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 			pm_zone->super = (struct pm_super*)pm_zone->pm_zone_virt_addr;
 			super = pm_zone->super;
 			pr_info("PM_MAGIC\n");
-			//if(super->magic != PM_MAGIC || super->initialized != true) {
+			if(super->magic != PM_MAGIC || super->initialized != true) {
 				pr_info("No_PM_MAGIC, start to init\n");
 				// we need to do some init work here
 				super->size = pm_zone->pm_zone_size >> PAGE_SHIFT;
@@ -6748,20 +6920,36 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 				
 				super->first_page = pgdat->node_pt_map;	
 				// buddy start page will start at 1 + size
-				super->buddy_start_pfn = (size >> PAGE_SHIFT) + 1;
+				super->buddy_start_pfn = (size >> PAGE_SHIFT) + 1 + pm_zone->start_pfn;	// we need the absolute pfn
 				super->buddy_managed_pages = ALIGN_DOWN(super->size - (size>>PAGE_SHIFT) - 1, MAX_ORDER_NR_PAGES);
 			
 				// pt_page init
 				pt_page_init(pgdat);
 				
 				super->free = super->buddy_managed_pages;
-				super->used = super->size - super->free;	
-			
-				super->initialized = true;
-				super->magic = PM_MAGIC;
+				super->used = super->size - super->free;
+
+				// log related
+				super->log4alloc.valid = false;
+				super->log4free.valid = false;
+
 				if(e820_range_to_nid(entry->addr) == 0)
 					po_super_init(&(super->po_super));
-			//}
+				flush_clwb(super, size + PAGE_SIZE);	// flush all meta
+				_mm_sfence();
+
+				super->initialized = true;
+				super->magic = PM_MAGIC;
+				flush_clwb(super, 64); // flush initialized & magic
+				_mm_sfence();
+			} else {
+				// we need to recover based on the log
+				if (super->log4alloc.valid) {
+					recover_from_pm_undo(super);
+				} else if (super->log4free.valid) {
+					recover_from_pm_redo(super);
+				}
+			}
 
 			// update totalpmem_pages, it is a global variable
 			totalpmem_pages += super->size;
@@ -6773,6 +6961,109 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 	pgdat->nr_pm_zones = 0;
 }
 
+void __init recover_from_pm_undo(struct pm_super* super) {
+	unsigned int i, j;
+	struct pt_free_area *area;
+	struct pt_page *page;
+	struct list_head *next;
+	i = 0;
+	j = super->log4alloc.alloc_order;
+	for (; j < super->log4alloc.order; j++) {
+		// recover the area inserted into
+		area = super->pt_free_area + j;
+		next = super->log4alloc.next[i];	// the origin next to the area
+		// delete the (maybe) inserted one
+		area->free_list.next = next;
+		next->prev = &(area->free_list);
+		flush_clwb(&(area->free_list.next), sizeof(area->free_list.next));
+		flush_clwb(&(next->prev), sizeof(next->prev));
+		area->nr_free = super->log4alloc.nr_frees[i];
+		flush_clwb(&(area->nr_free), sizeof(area->nr_free));
+		i++;
+	}
+	// insert the alloc page to the origin position
+	area = super->pt_free_area + j;
+	next = super->log4alloc.next[i];
+	area->nr_free = super->log4alloc.nr_frees[i];
+	flush_clwb(&(area->nr_free), sizeof(area->nr_free));
+	page = super->log4alloc.page;
+	atomic_set(&(page->_refcount), 0);
+	page->private = super->log4alloc.order;
+	area->free_list.next = &(page->lru);
+	page->lru.prev = &(area->free_list);
+	page->lru.next = next;
+	next->prev = &(page->lru);
+	flush_clwb(&(area->free_list.next), sizeof(area->free_list.next));
+	flush_clwb(&(next->prev), sizeof(next->prev));
+	flush_clwb(page, sizeof(struct pt_page));
+
+	for (i = 1; i < (1 << (super->log4alloc.order)); i++) {
+		(page+i)->private = MAX_ORDER + 1;
+		flush_clwb(&((page+i)->private), sizeof((page+i)->private));
+	}
+
+	super->free = super->log4alloc.free;
+	super->used = super->log4alloc.used;
+	flush_clwb(super, 64);
+	_mm_sfence();
+	super->log4alloc.valid = false;
+	flush_clwb(&(super->log4alloc.valid), sizeof(super->log4alloc.valid));
+	_mm_sfence();
+}
+
+void __init recover_from_pm_redo(struct pm_super* super) {
+	unsigned int i, j;
+	// struct pt_free_area *area;
+	unsigned long buddy_idx = 0, combined_idx = 0;
+	unsigned long page_idx;
+	struct pt_page *buddy, *page;
+
+	i = 0;
+	j = super->log4free.order;
+	page = super->log4free.page;
+	page_idx = page - super->first_page;
+	for (; j < super->log4free.combined_order; j++) {
+		// recover the delete area
+		buddy_idx = __find_pt_buddy_index(page_idx, j);
+		buddy = page + (buddy_idx - page_idx);
+
+		super->log4free.prev[i]->next = super->log4free.next[i];
+		super->log4free.next[i]->prev = super->log4free.prev[i];
+		flush_clwb(&(super->log4free.prev[i]->next), sizeof(super->log4free.prev[i]->next));
+		flush_clwb(&(super->log4free.next[i]->prev), sizeof(super->log4free.next[i]->prev));
+
+		super->pt_free_area[j].nr_free = super->log4free.nr_frees[i];
+		flush_clwb(&(super->pt_free_area[j].nr_free), sizeof(super->pt_free_area[j].nr_free));
+		
+		rmv_pt_page_order(buddy);
+		flush_clwb(&(buddy->private), sizeof(buddy->private));
+
+		combined_idx = __find_pt_combined_index(page_idx, j);
+		page = page + (combined_idx - page_idx);
+		page_idx = combined_idx;
+		i++;
+	}
+
+	// add page
+	super->pt_free_area[j].free_list.next = &(page->lru);
+	super->pt_free_area[j].nr_free = super->log4free.nr_frees[i];
+	page->lru.prev = &(super->pt_free_area[j].free_list);
+	page->lru.next = super->log4free.next[i];
+	super->log4free.next[i]->prev = &(page->lru);
+	page->private = j;
+	flush_clwb(&(super->pt_free_area[j]), sizeof(super->pt_free_area[j]));
+	flush_clwb(page, sizeof(struct pt_page));
+	flush_clwb(&(super->log4free.next[i]->prev), sizeof(super->log4free.next[i]->prev));
+
+	super->free = super->log4free.free;
+	super->used = super->log4free.used;
+	flush_clwb(super, 64);
+	_mm_sfence();
+	super->log4free.valid = false;
+	flush_clwb(&(super->log4free.valid), sizeof(super->log4free.valid));
+	_mm_sfence();
+}
+ 
 void __init print_zone_pm_emu(pg_data_t *pgdat)
 {
 	struct pm_zone	*pm_zone;

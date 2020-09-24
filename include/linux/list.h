@@ -8,6 +8,10 @@
 #include <linux/const.h>
 #include <linux/kernel.h>
 
+#ifdef CONFIG_ZONE_PM_EMU
+#include <linux/pflush.h>
+#endif
+
 /*
  * Simple doubly linked list implementation.
  *
@@ -66,6 +70,24 @@ static inline void __list_add(struct list_head *new,
 	WRITE_ONCE(prev->next, new);
 }
 
+#ifdef CONFIG_ZONE_PM_EMU
+static inline void __list_add_with_clwb(struct list_head *new,
+                	struct list_head *prev, 
+					struct list_head *next)
+{
+	if (!__list_add_valid(new, prev, next))
+		return;
+
+    next->prev = new;
+    new->next = next;
+    new->prev = prev;
+    WRITE_ONCE(prev->next, new);
+    flush_clwb(&(next->prev), sizeof(next->prev));
+    flush_clwb(new, sizeof(struct list_head));
+    flush_clwb(&(prev->next), sizeof(prev->next));
+}
+#endif
+
 /**
  * list_add - add a new entry
  * @new: new entry to be added
@@ -79,6 +101,12 @@ static inline void list_add(struct list_head *new, struct list_head *head)
 	__list_add(new, head, head->next);
 }
 
+#ifdef CONFIG_ZONE_PM_EMU
+static inline void list_add_with_clwb(struct list_head *new, struct list_head *head)
+{
+    __list_add_with_clwb(new, head, head->next);
+}
+#endif
 
 /**
  * list_add_tail - add a new entry
@@ -106,6 +134,16 @@ static inline void __list_del(struct list_head * prev, struct list_head * next)
 	WRITE_ONCE(prev->next, next);
 }
 
+#ifdef CONFIG_ZONE_PM_EMU
+static inline void __list_del_with_clwb(struct list_head *prev, struct list_head *next)
+{
+    next->prev = prev;
+	WRITE_ONCE(prev->next, next);
+    flush_clwb(&(next->prev), sizeof(next->prev));
+    flush_clwb(&(prev->next), sizeof(prev->next));
+}
+#endif
+
 /**
  * list_del - deletes entry from list.
  * @entry: the element to delete from the list.
@@ -126,6 +164,13 @@ static inline void list_del(struct list_head *entry)
 	entry->next = LIST_POISON1;
 	entry->prev = LIST_POISON2;
 }
+
+#ifdef CONFIG_ZONE_PM_EMU
+static inline void list_del_with_clwb(struct list_head *entry)
+{
+    __list_del_with_clwb(entry->prev, entry->next);
+}
+#endif
 
 /**
  * list_replace - replace old entry by new one
