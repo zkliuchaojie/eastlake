@@ -358,6 +358,7 @@
 408	64	po_stat			__x64_sys_po_stat
 409	64	po_fstat		__x64_sys_po_fstat
 410	64	po_chunk_next		__x64_sys_po_chunk_next
+411	64	debugger		__x64_sys_debugger
 
 #
 # x32-specific system call numbers start at 512 to avoid cache impact
