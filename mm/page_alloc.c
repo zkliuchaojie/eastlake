@@ -7106,7 +7106,7 @@ void __init test_and_check(pg_data_t *pgdat)
 	unsigned long pfn = pt_page_to_pfn(pgdat->node_pt_map + 10);
 	unsigned long pfn0 = pt_page_to_pfn(pgdat->node_pt_map);
 	struct pm_super *super = pm_zone->super;
-	struct pt_page *alloc_page[10];
+	struct pt_page *alloc_page[MAX_ORDER];
 	unsigned int i;
 	gpfp_t gpfp_mask = GPFP_KERNEL;
 	
@@ -7116,13 +7116,15 @@ void __init test_and_check(pg_data_t *pgdat)
 	print_buddy_info(super);
 	
 	// do some alloc and free work to check
-	for (i = 0; i < 10; i++) {
+	for (i = 0; i < MAX_ORDER; i++) {
 		alloc_page[i] = alloc_pt_pages_node(0, gpfp_mask, i);
+		memset(phys_to_virt(pt_page_to_pfn(alloc_page[i])<<PAGE_SHIFT), \
+		       0, 1UL << (i + PAGE_SHIFT));
 		pr_info("index: %ld\n", alloc_page[i] - super->first_page);
 		print_buddy_info(super);
 	}
-	for (i = 10; i > 0; i--) {
-		free_pt_pages(alloc_page[i-1], i-1);
+	for (i = 0; i < MAX_ORDER; i++) {
+		free_pt_pages(alloc_page[i], i);
 		print_buddy_info(super);
 	}
 }
