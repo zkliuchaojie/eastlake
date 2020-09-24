@@ -924,6 +924,7 @@ asmlinkage long sys_po_shrink(unsigned long pod, unsigned long addr, size_t len)
 asmlinkage long sys_po_stat(const char __user *poname, struct po_stat __user *statbuf);
 asmlinkage long sys_po_fstat(unsigned long pod, struct po_stat __user *statbuf);
 asmlinkage long sys_po_fstat(unsigned long pod, unsigned long last, size_t size, unsigned long __user *addrbuf);
+asmlinkage long sys_debugger(unsigned long op);
 
 /*
  * Architecture-specific system calls
