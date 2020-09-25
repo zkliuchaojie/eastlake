@@ -1344,6 +1344,7 @@ static void __free_pt_pages_ok(struct pt_page *pt_page, unsigned int order)
 	unsigned long page_idx;
 	struct pt_page *buddy;	
 	struct pm_super *super;
+	struct pt_page *saved_pt_page = pt_page;
 	unsigned int saved_order = order;
 	unsigned int i;
 
@@ -1397,6 +1398,8 @@ static void __free_pt_pages_ok(struct pt_page *pt_page, unsigned int order)
 
 	// now we can modify it
 	order = saved_order;
+	pt_page = saved_pt_page;
+	page_idx = pt_page - pm_zone->super->first_page;
 	while (order < MAX_ORDER - 1) {
 		buddy_idx = __find_pt_buddy_index(page_idx, order);
 		buddy = pt_page + (buddy_idx - page_idx);
@@ -6954,6 +6957,7 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 			// update totalpmem_pages, it is a global variable
 			totalpmem_pages += super->size;
 
+			pr_info("init finished");
 			return;
 		}
 	}
@@ -6962,10 +6966,11 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 }
 
 void __init recover_from_pm_undo(struct pm_super* super) {
-	unsigned int i, j;
+	unsigned int i, j, size;
 	struct pt_free_area *area;
 	struct pt_page *page;
 	struct list_head *next;
+	pr_info("recover_from_pm_undo\n");
 	i = 0;
 	j = super->log4alloc.alloc_order;
 	for (; j < super->log4alloc.order; j++) {
@@ -6997,9 +7002,14 @@ void __init recover_from_pm_undo(struct pm_super* super) {
 	flush_clwb(&(next->prev), sizeof(next->prev));
 	flush_clwb(page, sizeof(struct pt_page));
 
-	for (i = 1; i < (1 << (super->log4alloc.order)); i++) {
-		(page+i)->private = MAX_ORDER + 1;
-		flush_clwb(&((page+i)->private), sizeof((page+i)->private));
+	i = super->log4alloc.alloc_order;
+	j = super->log4alloc.order;
+	size = 1 << j;
+	while (j > i) {
+		j--;
+		size >>= 1;
+		page[size].private = MAX_ORDER + 1;
+		flush_clwb(&(page[size].private), sizeof(page[size].private));
 	}
 
 	super->free = super->log4alloc.free;
@@ -7018,6 +7028,7 @@ void __init recover_from_pm_redo(struct pm_super* super) {
 	unsigned long page_idx;
 	struct pt_page *buddy, *page;
 
+	pr_info("recover_from_pm_redo\n");
 	i = 0;
 	j = super->log4free.order;
 	page = super->log4free.page;
@@ -7111,6 +7122,7 @@ void __init test_and_check(pg_data_t *pgdat)
 	gpfp_t gpfp_mask = GPFP_KERNEL;
 	
 	pr_info("pt_page(pfn 0): %px %px pfn(page0):%ld pfn(page 10): %ld\n", pgdat->node_pt_map, pt_page, pfn0, pfn);
+	pr_info("buddy start pfn:%ld", super->buddy_start_pfn);
 
 	// check the buddy system work or not
 	print_buddy_info(super);
