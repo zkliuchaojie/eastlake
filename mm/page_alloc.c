@@ -6746,7 +6746,9 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 				}
 				
 				// node_pt_map is placed from the second page
-				size = ALIGN(super->size * sizeof(struct pt_page), PAGE_SIZE);
+				// buddy_start_pfn is aligned with 1UL<<(MAX_ORDER - 1 + PAGE_SHIFT).
+				size = ALIGN(super->size * sizeof(struct pt_page), 1UL<<(MAX_ORDER - 1 + PAGE_SHIFT));
+				size -= PAGE_SIZE;
 				
 				super->first_page = pgdat->node_pt_map;	
 				// buddy start page will start at 1 + size
