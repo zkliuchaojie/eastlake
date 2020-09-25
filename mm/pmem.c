@@ -9,6 +9,7 @@
 #include <linux/gfp.h>
 #include <linux/memory_hotplug.h>
 #include <asm/sparsemem.h>
+#include <linux/spinlock.h>
 
 /* this syscall is used to debug persistent memory management */
 SYSCALL_DEFINE1(debugger, unsigned int, op)
@@ -45,6 +46,10 @@ inline void extend_memory_with_pmem(void)
 	struct pt_page *page;
 	unsigned long long start, size;
 	int result;
+	static DEFINE_SPINLOCK(lock);
+
+	if (!spin_trylock(&lock))
+		return;
 
 	pr_info("MAX_ORDER - 1: %d", MAX_ORDER - 1);
 	pr_info("SECTION_SIZE_BITS: %d", SECTION_SIZE_BITS);
@@ -63,5 +68,7 @@ inline void extend_memory_with_pmem(void)
 		else
 			pr_info("extend memory success, result: %d", result);
 	}
+
+	spin_unlock(&lock);
 }
 

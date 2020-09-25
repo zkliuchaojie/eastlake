@@ -4577,9 +4577,11 @@ __alloc_pt_pages_nodemask(gpfp_t gpfp_mask, unsigned int order, int preferred_ni
 		}
 		break;
 	}
-	atomic_set(&(pt_page)->_refcount, 1);
-	pm_super->free -= (1UL << order);
-	pm_super->used += (1UL << order);
+	if (pt_page) {
+		atomic_set(&(pt_page)->_refcount, 1);
+		pm_super->free -= (1UL << order);
+		pm_super->used += (1UL << order);
+	}
 
 	spin_unlock(&pm_zone->lock);
 	local_irq_restore(flags);
