@@ -1093,13 +1093,26 @@ void __init e820__reserve_resources(void)
 	int i;
 	struct resource *res;
 	u64 end;
+	int nr_pmem_entries;
 
-	res = alloc_bootmem(sizeof(*res) * e820_table->nr_entries);
+	nr_pmem_entries = 0;
+	for (i = 0; i < e820_table->nr_entries; i++) {
+		struct e820_entry *entry = e820_table->entries + i;
+
+		if (entry->type == E820_TYPE_PRAM || entry->type == E820_TYPE_PMEM) {
+			nr_pmem_entries++;
+		}
+	}
+
+	res = alloc_bootmem(sizeof(*res) * (e820_table->nr_entries - nr_pmem_entries));
 	e820_res = res;
 
 	for (i = 0; i < e820_table->nr_entries; i++) {
 		struct e820_entry *entry = e820_table->entries + i;
 
+		if (entry->type == E820_TYPE_PRAM || entry->type == E820_TYPE_PMEM) {
+			continue;
+		}
 		end = entry->addr + entry->size - 1;
 		if (end != (resource_size_t)end) {
 			res++;
