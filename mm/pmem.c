@@ -10,6 +10,12 @@
 #include <linux/memory_hotplug.h>
 #include <asm/sparsemem.h>
 #include <linux/spinlock.h>
+#include <linux/slab.h>
+
+DEFINE_SPINLOCK(vms_list_lock);
+static struct virtual_memory_sections vms_list = {
+	.number = -1,
+};
 
 /* this syscall is used to debug persistent memory management */
 SYSCALL_DEFINE1(debugger, unsigned int, op)
@@ -18,6 +24,8 @@ SYSCALL_DEFINE1(debugger, unsigned int, op)
 		return 0;
 	if (op == 1) {
 		extend_memory_with_pmem();
+	} else if (op == 2) {
+		release_memory_to_pmem();
 	}
 
 	return op;
@@ -46,14 +54,18 @@ inline void extend_memory_with_pmem(void)
 	struct pt_page *page;
 	unsigned long long start, size;
 	int result;
-	static DEFINE_SPINLOCK(lock);
+	struct virtual_memory_section *vms;
 
-	if (!spin_trylock(&lock))
+	if (!spin_trylock(&vms_list_lock))
 		return;
+	/* not initialized */
+	if (vms_list.number == -1) {
+		INIT_LIST_HEAD(&vms_list.list);
+		vms_list.number = 0;
+	}
 
 	pr_info("MAX_ORDER - 1: %d", MAX_ORDER - 1);
 	pr_info("SECTION_SIZE_BITS: %d", SECTION_SIZE_BITS);
-
 
 	page = alloc_pt_pages_node(0, GPFP_KERNEL, MAX_ORDER - 1);
 	if (page != NULL) {
@@ -64,11 +76,37 @@ inline void extend_memory_with_pmem(void)
 
 		result = add_memory(0, start, size);
 		if (result < 0)
-			pr_info("extend memory with pmem failed");
-		else
-			pr_info("extend memory success, result: %d", result);
+			pr_info("extend memory with pmem failed, result: %d", result);
+
+		vms = kmalloc(sizeof(*vms), GFP_KERNEL);
+		if (vms == NULL) {
+			// TODO: release memory
+			spin_unlock(&vms_list_lock);
+			return;
+		}
+		INIT_LIST_HEAD(&vms->list);
+		vms->id = pfn_to_section_nr(pt_page_to_pfn(page));
+		list_add(&vms->list, &vms_list.list);
+		vms_list.number++;
 	}
 
-	spin_unlock(&lock);
+	spin_unlock(&vms_list_lock);
 }
 
+inline void release_memory_to_pmem(void)
+{
+	struct virtual_memory_section *vms;
+
+	if (vms_list.number == 0 || !spin_trylock(&vms_list_lock))
+		return;
+	/* check again */
+	if (vms_list.number == 0)
+		return;
+
+	pr_info("virtual memory section number: %d", vms_list.number);
+	list_for_each_entry(vms, &vms_list.list, list) {
+		pr_info("virtual memory section, id: %d", vms->id);
+	}
+
+	spin_unlock(&vms_list_lock);
+}
