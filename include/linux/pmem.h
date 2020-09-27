@@ -18,7 +18,7 @@ struct virtual_memory_sections {
 
 struct virtual_memory_section {
 	struct list_head list;
-	int id;
+	unsigned long long start;
 };
 
 extern unsigned long global_pm_zone_free_pages(void);

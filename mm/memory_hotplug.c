@@ -1114,6 +1114,21 @@ static int online_memory_block(struct memory_block *mem, void *arg)
 	return device_online(&mem->dev);
 }
 
+#ifdef CONFIG_ZONE_PM_EMU
+/* memory block is equal to section */
+static int offline_virtual_memory_section(unsigned long long section_start)
+{
+	struct memory_block *mem;
+
+	mem = find_memory_block(__pfn_to_section(section_start >> PAGE_SHIFT));
+	if (mem) {
+		return device_offline(&mem->dev);
+	} else {
+		return -ENOENT;
+	}
+}
+#endif
+
 /* we are OK calling __meminit stuff here - we have CONFIG_MEMORY_HOTPLUG */
 int __ref add_memory_resource(int nid, struct resource *res, bool online)
 {
@@ -1797,8 +1812,7 @@ static int check_memblock_offlined_cb(struct memory_block *mem, void *arg)
 
 		beginpa = PFN_PHYS(section_nr_to_pfn(mem->start_section_nr));
 		endpa = PFN_PHYS(section_nr_to_pfn(mem->end_section_nr + 1))-1;
-		pr_warn("removing memory fails, because memory [%pa-%pa] is onlined\n",
-			&beginpa, &endpa);
+		pr_warn("check_memblock_offlined_cb, [%pa-%pa] is onlined\n", &beginpa, &endpa);
 	}
 
 	return ret;
@@ -1917,8 +1931,17 @@ void __ref remove_memory(int nid, u64 start, u64 size)
 	 */
 	ret = walk_memory_range(PFN_DOWN(start), PFN_UP(start + size - 1), NULL,
 				check_memblock_offlined_cb);
+#ifndef CONFIG_ZONE_PM_EMU
 	if (ret)
 		BUG();
+#else
+	if (ret) {
+		if (offline_virtual_memory_section(start) < 0) {
+			pr_info("offline virtual memory section failed");
+			BUG();
+		}
+	}
+#endif
 
 	/* remove memmap entry */
 	firmware_map_remove(start, start + size, "System RAM");

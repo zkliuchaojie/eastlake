@@ -85,7 +85,7 @@ inline void extend_memory_with_pmem(void)
 			return;
 		}
 		INIT_LIST_HEAD(&vms->list);
-		vms->id = pfn_to_section_nr(pt_page_to_pfn(page));
+		vms->start = start;
 		list_add(&vms->list, &vms_list.list);
 		vms_list.number++;
 	}
@@ -105,7 +105,17 @@ inline void release_memory_to_pmem(void)
 
 	pr_info("virtual memory section number: %d", vms_list.number);
 	list_for_each_entry(vms, &vms_list.list, list) {
-		pr_info("virtual memory section, id: %d", vms->id);
+		pr_info("virtual memory section, start: %#018llx", vms->start);
+	}
+
+	vms = list_first_entry(&vms_list.list, struct virtual_memory_section, list);
+	remove_memory(0, vms->start, 1UL << (MAX_ORDER - 1 + 12));
+	list_del(&vms->list);
+	kfree(vms);
+	vms_list.number--;
+
+	list_for_each_entry(vms, &vms_list.list, list) {
+		pr_info("virtual memory section, start: %#018llx", vms->start);
 	}
 
 	spin_unlock(&vms_list_lock);
