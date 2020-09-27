@@ -110,6 +110,7 @@ inline void release_memory_to_pmem(void)
 
 	vms = list_first_entry(&vms_list.list, struct virtual_memory_section, list);
 	remove_memory(0, vms->start, 1UL << (MAX_ORDER - 1 + 12));
+	__free_pt_pages(pfn_to_pt_page(vms->start>>PAGE_SHIFT), MAX_ORDER - 1);
 	list_del(&vms->list);
 	kfree(vms);
 	vms_list.number--;
@@ -119,4 +120,10 @@ inline void release_memory_to_pmem(void)
 	}
 
 	spin_unlock(&vms_list_lock);
+}
+
+/* we do not use lock, just return number is ok */
+inline int get_virtual_memory_sections_number(void)
+{
+	return vms_list.number;
 }

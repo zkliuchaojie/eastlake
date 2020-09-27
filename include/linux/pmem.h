@@ -24,6 +24,7 @@ struct virtual_memory_section {
 extern unsigned long global_pm_zone_free_pages(void);
 extern void extend_memory_with_pmem(void);
 extern void release_memory_to_pmem(void);
+extern int get_virtual_memory_sections_number(void);
 
 #endif
 
