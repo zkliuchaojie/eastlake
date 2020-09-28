@@ -4642,7 +4642,7 @@ __alloc_pt_pages_nodemask(gpfp_t gpfp_mask, unsigned int order, int preferred_ni
 	unsigned long flags;
 	int low, high;
 	unsigned long size;
-	unsigned i, j;
+	unsigned int i, j;
 	struct pt_free_area *cur_area;
 	struct pt_page *next;
 		
@@ -6936,8 +6936,8 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 				super->log4alloc.valid = false;
 				super->log4free.valid = false;
 
-				if(e820_range_to_nid(entry->addr) == 0)
-					po_super_init(&(super->po_super));
+				// if(e820_range_to_nid(entry->addr) == 0)
+				// 	po_super_init(&(super->po_super));
 				flush_clwb(super, size + PAGE_SIZE);	// flush all meta
 				_mm_sfence();
 
@@ -7118,9 +7118,11 @@ void __init test_and_check(pg_data_t *pgdat)
 	unsigned long pfn0 = pt_page_to_pfn(pgdat->node_pt_map);
 	struct pm_super *super = pm_zone->super;
 	struct pt_page *alloc_page[MAX_ORDER];
-	unsigned int i;
+	struct pt_page* pages = NULL;	// note that po_super has alloc some pages, so do this when po_super don't exist
+	unsigned long i;
 	gpfp_t gpfp_mask = GPFP_KERNEL;
-	
+	unsigned long free = super->free;
+
 	pr_info("pt_page(pfn 0): %px %px pfn(page0):%ld pfn(page 10): %ld\n", pgdat->node_pt_map, pt_page, pfn0, pfn);
 	pr_info("buddy start pfn:%ld", super->buddy_start_pfn);
 
@@ -7139,6 +7141,30 @@ void __init test_and_check(pg_data_t *pgdat)
 		free_pt_pages(alloc_page[i], i);
 		print_buddy_info(super);
 	}
+
+	// add test we alloc all
+	// if (pages == NULL) {
+	// 	pr_err("vmalloc failed");
+	// 	return;
+	// }
+	pr_err("test alloc all %ld", free);
+	for (i = 0; i < free; i++) {
+		pages =  alloc_pt_pages_node(0, gpfp_mask, 0);
+		memset(phys_to_virt(pt_page_to_pfn(pages)<<PAGE_SHIFT), \
+		       0, 4096);
+		if (i % 10000 == 0) {
+			pr_err("alloc %ld", i);
+		}
+	}
+	print_buddy_info(super);
+	pr_err("test free all");
+	for (i = 0; i < free; i++) {
+		free_pt_pages(super->first_page + i, 0);
+		if (i % 10000 == 0) {
+			pr_err("free %ld", i);
+		}
+	}
+	print_buddy_info(super);
 }
 
 void __init try_to_access_zone_pm_emu(pg_data_t *pgdat)
