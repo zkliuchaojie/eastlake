@@ -579,6 +579,14 @@ phys_pud_init(pud_t *pud_page, unsigned long paddr, unsigned long paddr_end,
 		}
 
 		if (!pud_none(*pud)) {
+#ifdef CONFIG_ZONE_PM_EMU
+			if (after_bootmem &&
+			    (e820__mapped_any(paddr & PUD_MASK, paddr_next, E820_TYPE_PRAM) ||
+			     e820__mapped_any(paddr & PUD_MASK, paddr_next, E820_TYPE_PMEM))) {
+				paddr_last = paddr_next;
+				continue;
+			}
+#endif
 			if (!pud_large(*pud)) {
 				pmd = pmd_offset(pud, 0);
 				paddr_last = phys_pmd_init(pmd, paddr,
