@@ -41,10 +41,6 @@
 
 #include "internal.h"
 
-#ifdef CONFIG_ZONE_PM_EMU
-#include <asm/e820/api.h>
-#endif
-
 /*
  * online_page_callback contains pointer to current page onlining function.
  * Initially it is generic_online_page(). If it is required it could be
@@ -114,13 +110,7 @@ static struct resource *register_memory_resource(u64 start, u64 size)
 	res->end = start + size - 1;
 	res->flags = IORESOURCE_SYSTEM_RAM | IORESOURCE_BUSY;
 	conflict =  request_resource_conflict(&iomem_resource, res);
-
 	if (conflict) {
-#ifdef CONFIG_ZONE_PM_EMU
-		enum e820_type type = e820__get_entry_type(conflict->start, conflict->end);
-		if (type == E820_TYPE_PRAM || type == E820_TYPE_PMEM)
-			return res;
-#endif
 		if (conflict->desc == IORES_DESC_DEVICE_PRIVATE_MEMORY) {
 			pr_debug("Device unaddressable memory block "
 				 "memory hotplug at %#010llx !\n",
