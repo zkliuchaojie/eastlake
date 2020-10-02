@@ -45,6 +45,7 @@ obj-y += init-mm.o
 obj-y += po.o
 obj-y += po_metadata.o
 obj-y += po_map.o
+obj-y += pmem.o
 
 ifdef CONFIG_NO_BOOTMEM
 	obj-y		+= nobootmem.o
