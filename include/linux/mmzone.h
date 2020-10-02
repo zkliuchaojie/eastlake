@@ -1212,7 +1212,7 @@ static inline unsigned long section_nr_to_pfn(unsigned long sec)
 #define SECTION_ALIGN_DOWN(pfn)	((pfn) & PAGE_SECTION_MASK)
 
 struct page;
-#ifdef ZONE_PM_EMU
+#ifdef CONFIG_ZONE_PM_EMU
 struct pt_page;
 #endif
 struct page_ext;
