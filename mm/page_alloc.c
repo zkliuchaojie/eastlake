@@ -6823,8 +6823,10 @@ void __init free_area_init_node(int nid, unsigned long *zones_size,
 	register_zone_pm_emu(pgdat);
 	/* for debug */
 	print_zone_pm_emu(pgdat);
+	/* when debugging, enable the following codes by hand.
 	if (pgdat->nr_pm_zones != 0)
 		test_and_check(pgdat);
+	*/
 #endif
 
 }
@@ -6936,8 +6938,10 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 				super->log4alloc.valid = false;
 				super->log4free.valid = false;
 
-				// if(e820_range_to_nid(entry->addr) == 0)
-				// 	po_super_init(&(super->po_super));
+				// init po_super
+				if(e820_range_to_nid(entry->addr) == 0)
+					po_super_init(&(super->po_super));
+
 				flush_clwb(super, size + PAGE_SIZE);	// flush all meta
 				_mm_sfence();
 
