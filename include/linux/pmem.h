@@ -7,6 +7,8 @@
 
 #ifdef CONFIG_ZONE_PM_EMU
 
+// #define FLUSH_ALIGN ((uintptr_t)64)
+
 struct pmeminfo {
 	__kernel_ulong_t totalpmem;  /* Total usable persistent memory */
 	__kernel_ulong_t freepmem;   /* Available persistent memory */
@@ -29,6 +31,37 @@ static inline unsigned long global_pm_zone_free_pages(void)
 	}
 	return free_pages;
 }
+
+// static inline void flush_clwb(const void* addr, size_t len)
+// {
+// 	uintptr_t uptr;
+
+// 	/*
+// 	 * Loop through cache-line-size (typically 64B) aligned chunks
+// 	 * covering the given range.
+// 	 */
+// 	for (uptr = (uintptr_t)addr & ~(FLUSH_ALIGN - 1);
+// 		uptr < (uintptr_t)addr + len; uptr += FLUSH_ALIGN) {
+// 		clwb((char *)uptr);
+// 	}
+// }
+
+// fence
+// _mm_mfence() _mm_sfence()...
+
+// ntstore 
+// void _mm_stream_si32 (int* mem_addr, int a)
+// void _mm_stream_pi (__m64* mem_addr, __m64 a)
+// static inline void NTwrite32(void* addr, int a)
+// {
+// 	_mm_stream_si32(addr, a);
+// }
+
+// static inline void NTwrite64(void* addr, uint64_t a) 
+// {
+// 	_mm_stream_pi(addr, a);
+// }
+
 #endif
 
 #endif

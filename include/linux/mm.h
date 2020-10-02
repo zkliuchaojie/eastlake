@@ -249,7 +249,7 @@ extern unsigned int kobjsize(const void *objp);
 #else
 # define VM_PKEY_BIT4  0
 #endif
-#ifdef ZONE_PM_EMU
+#ifdef CONFIG_ZONE_PM_EMU
 # define VM_USE_PM VM_HIGH_ARCH_5
 #else
 # define VM_USE_PM 0
@@ -2078,6 +2078,8 @@ extern void free_initmem(void);
 
 #ifdef CONFIG_ZONE_PM_EMU
 extern void register_zone_pm_emu(pg_data_t *pgdat);
+extern void recover_from_pm_undo(struct pm_super* super);
+extern void recover_from_pm_redo(struct pm_super* super);
 extern void print_zone_pm_emu(pg_data_t *pgdat);
 extern void test_and_check(pg_data_t *pgdat);
 extern void try_to_access_zone_pm_emu(pg_data_t *pgdat);
