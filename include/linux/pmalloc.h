@@ -18,7 +18,7 @@
 #define pt_page_to_phys(page)	(pt_page_to_pfn(page)<<PAGE_SHIFT_REDEFINED)
 #define virt_to_pt_page(p)	pfn_to_pt_page((virt_to_phys(p)>>PAGE_SHIFT_REDEFINED))
 #define phys_to_pt_page(phys)	pfn_to_pt_page(phys>>PAGE_SHIFT_REDEFINED)
-#define MAX_BUDDY_ALLOC_SIZE	(PAGE_SIZE_REDEFINED << 10)
+#define MAX_BUDDY_ALLOC_SIZE	((MAX_ORDER - 1) << PAGE_SHIFT_REDEFINED)
 
 /*
  * alloc_pt_pages/free_pt_pages is used to alloc/free AEP space,

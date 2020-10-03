@@ -64,13 +64,10 @@ inline void extend_memory_with_pmem(void)
 		vms_list.number = 0;
 	}
 
-	pr_info("MAX_ORDER - 1: %d", MAX_ORDER - 1);
-	pr_info("SECTION_SIZE_BITS: %d", SECTION_SIZE_BITS);
-
-	page = alloc_pt_pages_node(0, GPFP_KERNEL, MAX_ORDER - 1);
+	page = alloc_pt_pages_node(0, GPFP_KERNEL, SECTION_SIZE_BITS - PAGE_SHIFT);
 	if (page != NULL) {
 		start = (pt_page_to_pfn(page)<<12);
-		size = (1UL << (MAX_ORDER - 1 + 12));
+		size = (1UL << (SECTION_SIZE_BITS));
 		pr_info("extend memory with pmem: [mem %#018llx-%#018llx]\n", \
 			   start, start + size -1);
 
@@ -109,8 +106,8 @@ inline void release_memory_to_pmem(void)
 	}
 
 	vms = list_first_entry(&vms_list.list, struct virtual_memory_section, list);
-	remove_memory(0, vms->start, 1UL << (MAX_ORDER - 1 + 12));
-	__free_pt_pages(pfn_to_pt_page(vms->start>>PAGE_SHIFT), MAX_ORDER - 1);
+	remove_memory(0, vms->start, 1UL << (SECTION_SIZE_BITS));
+	__free_pt_pages(pfn_to_pt_page(vms->start>>PAGE_SHIFT), SECTION_SIZE_BITS - PAGE_SHIFT);
 	list_del(&vms->list);
 	kfree(vms);
 	vms_list.number--;
