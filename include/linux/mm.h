@@ -2078,6 +2078,8 @@ extern void free_initmem(void);
 
 #ifdef CONFIG_ZONE_PM_EMU
 extern void register_zone_pm_emu(pg_data_t *pgdat);
+extern void recover_from_pm_undo(struct pm_super* super);
+extern void recover_from_pm_redo(struct pm_super* super);
 extern void print_zone_pm_emu(pg_data_t *pgdat);
 extern void test_and_check(pg_data_t *pgdat);
 extern void try_to_access_zone_pm_emu(pg_data_t *pgdat);

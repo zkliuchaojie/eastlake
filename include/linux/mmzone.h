@@ -539,18 +539,51 @@ struct zone {
 // MAGIC NUM eastlake
 #define PM_MAGIC (0x656173746c616b65)
 
+// for the crash consistency of alloc page
+// if crash happends, we undo it
+struct pm_undo {
+	bool valid;
+	unsigned long free;
+	unsigned long used;
+	struct pt_page *page;	// the page to alloc
+	unsigned int order;	// page order
+	unsigned int alloc_order; // the order we want to get
+	uint8_t padding[24];	// 64B
+	struct list_head* next[MAX_ORDER];	// we only need to recover [alloc_order, order]
+	unsigned long nr_frees[MAX_ORDER];
+	uint8_t padding1[16];
+};	// 256B
+
+// for the crash consistency of free page
+struct pm_redo {
+	bool valid;
+	unsigned long free;
+	unsigned long used;
+	struct pt_page *page; // the page to free
+	unsigned int order;	// page order
+	unsigned int combined_order;	// the fina combined order
+	uint8_t padding[24];	// 64B
+	struct list_head* prev[MAX_ORDER];
+	struct list_head* next[MAX_ORDER];
+	unsigned long nr_frees[MAX_ORDER];	// 328B
+	uint8_t padding1[56]; 
+};
+
 struct pm_super {
-	uint64_t magic;
-	unsigned long size;
+	uint64_t magic;	// 8B
+	bool initialized;
+	unsigned long size;	
 	unsigned long free;
 	unsigned long used;
 	unsigned long buddy_start_pfn;
-	unsigned long buddy_managed_pages;
-	struct pt_page *first_page;
-	struct pt_free_area pt_free_area[MAX_ORDER];
-	bool initialized;
+	unsigned long buddy_managed_pages; // 56B
+	struct pt_page *first_page;	// 64B
+	struct pt_free_area pt_free_area[MAX_ORDER];	// 328B
 	// po_super is placed in node0
-	struct po_super po_super;
+	struct po_super po_super;	// 360B
+	uint8_t padding[24];
+	struct pm_undo log4alloc;	// cacheline align
+	struct pm_redo log4free;
 };
 
 struct pm_zone {
