@@ -1164,6 +1164,14 @@ int __ref arch_remove_memory(u64 start, u64 size, struct vmem_altmap *altmap)
 	zone = page_zone(page);
 	ret = __remove_pages(zone, start_pfn, nr_pages, altmap);
 	WARN_ON_ONCE(ret);
+#ifdef CONFIG_ZONE_PM_EMU
+	/* When using virtual memory section, it does not need remove pmem mapping. */
+	if (after_bootmem &&
+	    (e820__mapped_any(start, start + size, E820_TYPE_PRAM) ||
+	     e820__mapped_any(start, start + size, E820_TYPE_PMEM))) {
+		return ret;
+	}
+#endif
 	kernel_physical_mapping_remove(start, start + size);
 
 	return ret;
