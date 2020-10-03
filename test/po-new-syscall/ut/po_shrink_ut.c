@@ -17,7 +17,8 @@
 #include <sys/mman.h>
 
 #define PAGE_SIZE_REDEFINED	(4*1024)
-#define MAX_BUDDY_ALLOC_SIZE    (PAGE_SIZE_REDEFINED << 10)
+#define MAX_ORDER		16
+#define MAX_BUDDY_ALLOC_SIZE    ((MAX_ORDER - 1) << 12)
 
 TEST(po_shrink, simple_test)
 {

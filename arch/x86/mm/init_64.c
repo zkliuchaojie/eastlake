@@ -579,6 +579,14 @@ phys_pud_init(pud_t *pud_page, unsigned long paddr, unsigned long paddr_end,
 		}
 
 		if (!pud_none(*pud)) {
+#ifdef CONFIG_ZONE_PM_EMU
+			if (after_bootmem &&
+			    (e820__mapped_any(paddr & PUD_MASK, paddr_next, E820_TYPE_PRAM) ||
+			     e820__mapped_any(paddr & PUD_MASK, paddr_next, E820_TYPE_PMEM))) {
+				paddr_last = paddr_next;
+				continue;
+			}
+#endif
 			if (!pud_large(*pud)) {
 				pmd = pmd_offset(pud, 0);
 				paddr_last = phys_pmd_init(pmd, paddr,
@@ -1156,6 +1164,14 @@ int __ref arch_remove_memory(u64 start, u64 size, struct vmem_altmap *altmap)
 	zone = page_zone(page);
 	ret = __remove_pages(zone, start_pfn, nr_pages, altmap);
 	WARN_ON_ONCE(ret);
+#ifdef CONFIG_ZONE_PM_EMU
+	/* When using virtual memory section, it does not need remove pmem mapping. */
+	if (after_bootmem &&
+	    (e820__mapped_any(start, start + size, E820_TYPE_PRAM) ||
+	     e820__mapped_any(start, start + size, E820_TYPE_PMEM))) {
+		return ret;
+	}
+#endif
 	kernel_physical_mapping_remove(start, start + size);
 
 	return ret;

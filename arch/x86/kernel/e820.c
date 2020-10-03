@@ -1159,6 +1159,13 @@ void __init e820__reserve_resources_late(void)
 
 	res = e820_res;
 	for (i = 0; i < e820_table->nr_entries; i++) {
+		struct e820_entry *entry = e820_table->entries + i;
+
+		if (entry->type == E820_TYPE_PRAM || entry->type == E820_TYPE_PMEM) {
+			res++;
+			continue;
+		}
+
 		if (!res->parent && res->end)
 			insert_resource_expand_to_fit(&iomem_resource, res);
 		res++;
