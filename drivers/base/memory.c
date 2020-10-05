@@ -26,6 +26,10 @@
 #include <linux/atomic.h>
 #include <linux/uaccess.h>
 
+#ifdef CONFIG_ZONE_PM_EMU
+#include <asm/e820/api.h>
+#endif
+
 static DEFINE_MUTEX(mem_sysfs_mutex);
 
 #define MEMORY_CLASS_NAME	"memory"
@@ -291,8 +295,21 @@ static int memory_subsys_online(struct device *dev)
 	 * set >= 0 Otherwise we were called from the device online
 	 * attribute and need to set the online_type.
 	 */
+#ifdef CONFIG_ZONE_PM_EMU
+	if (mem->online_type < 0) {
+		if (e820__mapped_any(section_nr_to_pfn(mem->start_section_nr) << PAGE_SHIFT,
+		    section_nr_to_pfn(mem->end_section_nr) << PAGE_SHIFT, E820_TYPE_PRAM) ||
+		    e820__mapped_any(section_nr_to_pfn(mem->start_section_nr) << PAGE_SHIFT,
+		    section_nr_to_pfn(mem->end_section_nr) << PAGE_SHIFT, E820_TYPE_PMEM)) {
+			mem->online_type = MMOP_ONLINE_MOVABLE;
+		} else {
+			mem->online_type = MMOP_ONLINE_KEEP;
+		}
+	}
+#else
 	if (mem->online_type < 0)
 		mem->online_type = MMOP_ONLINE_KEEP;
+#endif
 
 	/* Already under protection of mem_hotplug_begin() */
 	ret = memory_block_change_state(mem, MEM_ONLINE, MEM_OFFLINE);
@@ -681,6 +698,8 @@ static int init_memory_block(struct memory_block **memory,
 	mem->state = state;
 	start_pfn = section_nr_to_pfn(mem->start_section_nr);
 	mem->phys_device = arch_get_memory_phys_device(start_pfn);
+
+	mem->online_type = -1;
 
 	ret = register_memory(mem);
 
