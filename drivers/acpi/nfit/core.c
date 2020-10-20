@@ -2680,8 +2680,12 @@ static int acpi_nfit_insert_resource(struct acpi_nfit_desc *acpi_desc,
 	/* No operation if the region is already registered as PMEM */
 	is_pmem = region_intersects(nd_res->start, resource_size(nd_res),
 				IORESOURCE_MEM, IORES_DESC_PERSISTENT_MEMORY);
+#ifdef CONFIG_ZONE_PM_EMU
+	return 0;
+#else
 	if (is_pmem == REGION_INTERSECTS)
 		return 0;
+#endif
 
 	res = devm_kzalloc(acpi_desc->dev, sizeof(*res), GFP_KERNEL);
 	if (!res)
