@@ -1373,6 +1373,13 @@ static unsigned long probe_memory_block_size(void)
 	if (bz)
 		goto done;
 
+/*
+ * if defined CONFIG_ZONE_PM_EMU, memory block size is equal to
+ * MIN_MEMORY_BLOCK_SIZE, which is section size.
+*/
+#ifdef CONFIG_ZONE_PM_EMU
+	bz = MIN_MEMORY_BLOCK_SIZE;
+#else
 	/* Use regular block if RAM is smaller than MEM_SIZE_FOR_LARGE_BLOCK */
 	if (boot_mem_end < MEM_SIZE_FOR_LARGE_BLOCK) {
 		bz = MIN_MEMORY_BLOCK_SIZE;
@@ -1384,6 +1391,8 @@ static unsigned long probe_memory_block_size(void)
 		if (IS_ALIGNED(boot_mem_end, bz))
 			break;
 	}
+#endif
+
 done:
 	pr_info("x86/mm: Memory block size: %ldMB\n", bz >> 20);
 

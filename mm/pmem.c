@@ -73,7 +73,7 @@ inline void extend_memory_with_pmem(void)
 
 		result = add_memory(0, start, size);
 		if (result < 0) {
-			pr_info("extend memory with pmem failed, result: %d", result);
+			pr_info("extend memory with pmem failed, result: %d\n", result);
 			__free_pt_pages(page, SECTION_SIZE_BITS - PAGE_SHIFT);
 			spin_unlock(&vms_list_lock);
 			return;
@@ -81,7 +81,7 @@ inline void extend_memory_with_pmem(void)
 
 		vms = kmalloc(sizeof(*vms), GFP_KERNEL);
 		if (vms == NULL) {
-			pr_info("extend memory with pmem failed, error: %ld", (unsigned long)vms);
+			pr_info("extend memory with pmem failed, error: %ld\n", (unsigned long)vms);
 			remove_memory(0, start, 1UL << (SECTION_SIZE_BITS));
 			__free_pt_pages(page, SECTION_SIZE_BITS - PAGE_SHIFT);
 			spin_unlock(&vms_list_lock);
