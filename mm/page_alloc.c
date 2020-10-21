@@ -4576,6 +4576,10 @@ __alloc_pages_nodemask(gfp_t gfp_mask, unsigned int order, int preferred_nid,
 	gfp_t alloc_mask; /* The gfp_t that was actually used for allocation */
 	struct alloc_context ac = { };
 
+	if (global_zone_page_state(NR_FREE_PAGES) < (totalram_pages>>3)) {
+		/* try to extend memory capacity with pmem */
+		extend_memory_with_pmem();
+	}
 	/*
 	 * There are several places where we assume that the order value is sane
 	 * so bail out early if the request is out of bound.
@@ -4596,8 +4600,6 @@ __alloc_pages_nodemask(gfp_t gfp_mask, unsigned int order, int preferred_nid,
 	page = get_page_from_freelist(alloc_mask, order, alloc_flags, &ac);
 	if (likely(page))
 		goto out;
-	/* try to extend memory capacity with pmem */
-	extend_memory_with_pmem();
 
 	/*
 	 * Apply scoped allocation constraints. This is mainly about GFP_NOFS
