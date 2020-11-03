@@ -18,6 +18,7 @@ TEST(po_creat, simple_test)
 	int pod;
 
 	pod = syscall(400, poname, 0);
+	printf("%d\n",errno);
 	ASSERT_GE(pod, 0);
 
 	pod = syscall(403, pod, 0);
@@ -26,7 +27,6 @@ TEST(po_creat, simple_test)
 	pod = syscall(401, poname, 0);
 	ASSERT_EQ(pod, 0);
 }
-
 TEST(po_creat, invalid_argument_test)
 {
 	char poname[] = "c/";
