@@ -137,6 +137,8 @@ unsigned long totalcma_pages __read_mostly;
 
 #ifdef CONFIG_ZONE_PM_EMU
 unsigned long totalpmem_pages __read_mostly;
+unsigned long node_pfn_boundary;
+EXPORT_SYMBOL(node_pfn_boundary);
 #endif
 
 int percpu_pagelist_fraction;
@@ -6827,10 +6829,9 @@ void __init free_area_init_node(int nid, unsigned long *zones_size,
 	register_zone_pm_emu(pgdat);
 	/* for debug */
 	print_zone_pm_emu(pgdat);
-	/* when debugging, enable the following codes by hand.
-	if (pgdat->nr_pm_zones != 0)
-		test_and_check(pgdat);
-	*/
+	/* when debugging, enable the following codes by hand. */
+	/*if (pgdat->nr_pm_zones != 0)
+		test_and_check(pgdat);*/
 #endif
 
 }
@@ -6885,12 +6886,13 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 	struct pm_super *super;
 	unsigned int order;
 	unsigned long size;
+	unsigned int nr_pm_zones = 0;
 	for (i = 0; i < e820_table->nr_entries; i++) {
 		entry = e820_table->entries + i;
 		/* for simple, we just manage only one PM zone for now */
 		if ((entry->type == E820_TYPE_PRAM || entry->type == E820_TYPE_PMEM) && \
 			( e820_range_to_nid(entry->addr) == pgdat->node_id )) {
-			pr_info("strat to register pm_zone\n");
+			pr_info("strat to register pm_zone at node %d\n", pgdat->node_id);
 			pm_zone = pgdat->node_pm_zones + ZONE_PM_EMU;
 			pm_zone->pm_zone_pgdat = pgdat;
 			pm_zone->node = e820_range_to_nid(entry->addr);
@@ -6898,6 +6900,11 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 			pm_zone->pm_zone_phys_addr = ALIGN(entry->addr, PAGE_SIZE);
 			pm_zone->start_pfn = pm_zone->pm_zone_phys_addr >> PAGE_SHIFT;
 			pm_zone->pm_zone_phys_end = ALIGN_DOWN(entry->addr + entry->size, PAGE_SIZE);
+			
+			if (pgdat->node_id == 0) {
+				node_pfn_boundary = pm_zone->pm_zone_phys_end >> PAGE_SHIFT;
+			}
+
 			// the zone_pm_emu is already mapped to kernel virtual space
 			pm_zone->pm_zone_virt_addr = __va(pm_zone->pm_zone_phys_addr);
 			// pm_zone->pm_zone_size = entry->size;
@@ -6905,7 +6912,8 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 			// lock init
 			spin_lock_init(&pm_zone->lock);
 			pm_zone->name = pm_zone_names[ZONE_PM_EMU];
-			pgdat->nr_pm_zones = 1;
+			// pgdat->nr_pm_zones = 1;
+			nr_pm_zones = 1;
 			pgdat->node_pt_map = (struct pt_page*)__va(pm_zone->pm_zone_phys_addr + PAGE_SIZE);			
 	
 			// initialization of pm_super, we put the info at the beginning of PM
@@ -6967,12 +6975,15 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 			// update totalpmem_pages, it is a global variable
 			totalpmem_pages += super->size;
 
-			pr_info("init finished");
-			return;
+			pr_info("init finished %d", pgdat->node_id);
+			// return;
 		}
 	}
-	pr_info("there is no PRAM range in e820_table\n");
-	pgdat->nr_pm_zones = 0;
+	pgdat->nr_pm_zones = nr_pm_zones;
+	pr_info("node_pfn_boundary: %ld\n", node_pfn_boundary);
+	if (pgdat->nr_pm_zones == 0) {
+		pr_info("there is no PRAM range in e820_table\n");
+	}
 }
 
 void __init recover_from_pm_undo(struct pm_super* super) {
@@ -7133,7 +7144,7 @@ void __init test_and_check(pg_data_t *pgdat)
 	gpfp_t gpfp_mask = GPFP_KERNEL;
 	unsigned long free = super->free;
 
-	pr_info("pt_page(pfn 0): %px %px pfn(page0):%ld pfn(page 10): %ld\n", pgdat->node_pt_map, pt_page, pfn0, pfn);
+	pr_info("node: %d pt_page(pfn 0): %px %px pfn(page0):%ld pfn(page 10): %ld\n", pgdat->node_id, pgdat->node_pt_map, pt_page, pfn0, pfn);
 	pr_info("buddy start pfn:%ld", super->buddy_start_pfn);
 
 	// check the buddy system work or not
@@ -7141,7 +7152,7 @@ void __init test_and_check(pg_data_t *pgdat)
 	
 	// do some alloc and free work to check
 	for (i = 0; i < MAX_ORDER; i++) {
-		alloc_page[i] = alloc_pt_pages_node(0, gpfp_mask, i);
+		alloc_page[i] = alloc_pt_pages_node(pgdat->node_id, gpfp_mask, i);
 		memset(phys_to_virt(pt_page_to_pfn(alloc_page[i])<<PAGE_SHIFT), \
 		       0, 1UL << (i + PAGE_SHIFT));
 		pr_info("index: %ld\n", alloc_page[i] - super->first_page);
@@ -7159,10 +7170,10 @@ void __init test_and_check(pg_data_t *pgdat)
 	// }
 	pr_err("test alloc all %ld", free);
 	for (i = 0; i < free; i++) {
-		pages =  alloc_pt_pages_node(0, gpfp_mask, 0);
+		pages =  alloc_pt_pages_node(pgdat->node_id, gpfp_mask, 0);
 		memset(phys_to_virt(pt_page_to_pfn(pages)<<PAGE_SHIFT), \
 		       0, 4096);
-		if (i % 10000 == 0) {
+		if (i % 100000 == 0) {
 			pr_err("alloc %ld", i);
 		}
 	}
@@ -7170,7 +7181,7 @@ void __init test_and_check(pg_data_t *pgdat)
 	pr_err("test free all");
 	for (i = 0; i < free; i++) {
 		free_pt_pages(super->first_page + i, 0);
-		if (i % 10000 == 0) {
+		if (i % 100000 == 0) {
 			pr_err("free %ld", i);
 		}
 	}
