@@ -406,8 +406,8 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 		if ((!(desc->flags & O_WRONLY)) && (!(desc->flags & O_RDWR)))
 			return -EINVAL;
 	/* check flags, just support MAP_PRIVATE, MAP_ANONYMOUS and MAP_HUGETLB*/
-	if ((flags | MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB) != \
-		(MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB))
+	if ((flags | MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_NUMA_AWARE) != \
+		(MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_NUMA_AWARE))
 		return -EINVAL;
 
 	new_chunk = (struct po_chunk *)kpmalloc(sizeof(*new_chunk), GFP_KERNEL);
@@ -434,8 +434,8 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 			alloc_size = (len-cnt > MAX_BUDDY_ALLOC_SIZE) ? \
 				MAX_BUDDY_ALLOC_SIZE : len - cnt;
 			v_start = (flags & MAP_ANONYMOUS) ? \
-				po_alloc_pt_pages_zeroed(alloc_size, GPFP_KERNEL) : \
-				po_alloc_pt_pages(alloc_size, GPFP_KERNEL);
+				po_alloc_pt_pages_zeroed(alloc_size, GPFP_KERNEL | ((flags&MAP_NUMA_AWARE) ? ___GPFP_NUMA_AWARE : 0x0)) : \
+				po_alloc_pt_pages(alloc_size, GPFP_KERNEL | ((flags&MAP_NUMA_AWARE) ? ___GPFP_NUMA_AWARE : 0x0));
 			if (!v_start)
 				return -ENOMEM;
 			curr = (struct po_chunk *)kpmalloc(sizeof(*new_chunk), GFP_KERNEL);
@@ -449,8 +449,8 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 	} else {
 		alloc_size = len;
 		v_start = (flags & MAP_ANONYMOUS) ? \
-			po_alloc_pt_pages_zeroed(alloc_size, GPFP_KERNEL) : \
-			po_alloc_pt_pages(alloc_size, GPFP_KERNEL);
+			po_alloc_pt_pages_zeroed(alloc_size, GPFP_KERNEL | ((flags&MAP_NUMA_AWARE) ? ___GPFP_NUMA_AWARE : 0x0)) : \
+			po_alloc_pt_pages(alloc_size, GPFP_KERNEL | ((flags&MAP_NUMA_AWARE) ? ___GPFP_NUMA_AWARE : 0x0));
 		if (!v_start) {
 			kpfree(new_chunk);
 			return -ENOMEM;

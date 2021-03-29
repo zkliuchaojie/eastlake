@@ -336,6 +336,7 @@ struct vm_area_struct;
 #else
 #define ___GPFP_NOLOCKDEP	0
 #endif
+#define ___GPFP_NUMA_AWARE	0x1000000u
 /* If the above are modified, __GPFP_BITS_SHIFT may need updating */
 
 /*

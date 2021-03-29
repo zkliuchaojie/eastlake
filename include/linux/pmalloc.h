@@ -37,7 +37,7 @@ static void *po_alloc_pt_pages(size_t size, gpfp_t flags)
 	order = 0;
 	for (; tmp < size; order++)
 		tmp *= 2;
-	page = alloc_pt_pages_node(0, flags, order);
+	page = alloc_pt_pages_node((flags&___GPFP_NUMA_AWARE) ? NUMA_NO_NODE : 0, flags, order);
 	if (page == NULL)
 		return NULL;
 	return (void*)pt_page_to_virt(page);
@@ -81,7 +81,7 @@ static void *kpmalloc(size_t size, gpfp_t flags)
 
 	if (size > PAGE_SIZE_REDEFINED)
 		return NULL;
-	page = alloc_pt_pages_node(0, flags, 0);
+	page = alloc_pt_pages_node((flags&___GPFP_NUMA_AWARE) ? NUMA_NO_NODE : 0, flags, 0);
 	if (page == NULL)
 		return NULL;
 	return (void*)pt_page_to_virt(page);

@@ -64,7 +64,7 @@ inline void extend_memory_with_pmem(void)
 		vms_list.number = 0;
 	}
 
-	page = alloc_pt_pages_node(0, GPFP_KERNEL, SECTION_SIZE_BITS - PAGE_SHIFT);
+	page = alloc_pt_pages_node(NUMA_NO_NODE, GPFP_KERNEL, SECTION_SIZE_BITS - PAGE_SHIFT);
 	if (page != NULL) {
 		start = (pt_page_to_pfn(page)<<12);
 		size = (1UL << (SECTION_SIZE_BITS));
