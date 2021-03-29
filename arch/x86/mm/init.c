@@ -655,7 +655,6 @@ static void __init memory_map_pm_emu(void)
 		/* for simple, we just manage only one PM zone for now */
 		if (entry->type == E820_TYPE_PRAM || entry->type == E820_TYPE_PMEM) {
 			init_memory_mapping(entry->addr, entry->addr+entry->size);
-			break;
 		}
 	}
 }

@@ -82,11 +82,26 @@
 #define __pfn_to_page(pfn)	(vmemmap + (pfn))
 #define __page_to_pfn(page)	(unsigned long)((page) - vmemmap)
 
-/* do not support */
+/* we use this model */
 #ifdef CONFIG_ZONE_PM_EMU
-#define __pfn_to_pt_page(pfn)      ((NODE_DATA(0)->node_pt_map) + ((pfn) - NODE_DATA(0)->node_pm_zones[ZONE_PM_EMU].super->buddy_start_pfn))
+extern unsigned long node_pfn_boundary;
+#define __pfn_to_pt_page(pfn)                   \
+({      unsigned long __nid = (pfn > node_pfn_boundary) ? 1 : 0;            \
+        NODE_DATA(__nid)->node_pt_map + ((pfn) - NODE_DATA(__nid)->node_pm_zones[ZONE_PM_EMU].super->buddy_start_pfn);\
+})
+
+#define __pt_page_to_pfn(pg)                                            \
+({      struct pt_page *__pg = (pg);                                    \
+        struct pglist_data *__pgdat = NODE_DATA(pt_page_to_nid(__pg));  \
+        (unsigned long)(__pg - __pgdat->node_pt_map) +                  \
+         __pgdat->node_pm_zones[ZONE_PM_EMU].super->buddy_start_pfn;                                 \
+})
+
+/* 
+#define __pfn_to_pt_page(pfn)      ((NODE_DATA(e820_range_to_nid(PFN_PHYS(pfn)))->node_pt_map) + ((pfn) - NODE_DATA(e820_range_to_nid(PFN_PHYS(pfn)))->node_pm_zones[ZONE_PM_EMU].super->buddy_start_pfn))
 #define __pt_page_to_pfn(page)     ((unsigned long)((page) - (NODE_DATA(0)->node_pt_map)) + \
-                                 NODE_DATA(0)->node_pm_zones[ZONE_PM_EMU].super->buddy_start_pfn)
+                                  NODE_DATA(0)->node_pm_zones[ZONE_PM_EMU].super->buddy_start_pfn)
+*/
 #endif
 
 #elif defined(CONFIG_SPARSEMEM)
