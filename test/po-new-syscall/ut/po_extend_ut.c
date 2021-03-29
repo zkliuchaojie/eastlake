@@ -223,3 +223,25 @@ TEST(po_extend, extend_with_MAP_ANONYMOUS)
 	retval1 = syscall(401, poname, 0);
 	ASSERT_EQ(retval1, 0);
 }
+
+TEST(po_extend, hugepage_simple_test)
+{
+	char poname[] = "f";
+	int pod1;
+	long long retval1;
+	char *c;
+
+	pod1 = syscall(400, poname);
+	ASSERT_GE(pod1, 0);
+
+	c = (char *)syscall(406, pod1, MAX_BUDDY_ALLOC_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE);
+	ASSERT_GE((unsigned long)c, 0);
+	c[0] = 'a';
+	//printf("%c\n", c[0]);
+
+	retval1 = syscall(403, pod1, 0);
+	ASSERT_GE(retval1, 0);
+
+	retval1 = syscall(401, poname, 0);
+	ASSERT_EQ(retval1, 0);
+}

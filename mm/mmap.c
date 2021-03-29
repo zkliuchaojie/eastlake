@@ -2811,23 +2811,29 @@ long po_map_chunk(unsigned long start, size_t len, unsigned long prot, \
 	pte_t entry;
 	pgprot_t pgprot;
 	vm_flags_t vm_flags = 0;
+	int use_huge_page = 0;
 
 	// check if the chunk is mapped already.
 	vma = find_vma(mm, fixed_address);
         if (vma && vma->vm_start == fixed_address)
                 return fixed_address;
-
-	vm_flags |= calc_vm_prot_bits(prot, 0) | calc_vm_flag_bits(flags) |
-		mm->def_flags | VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC;
-	pgprot = vm_get_page_prot(vm_flags);
 	/*
 	 * For now, we do not consider huge page: 2MB and 1GB.
 	 * And we just assume that there are 4-level page tables.
 	 */
+	if (((!(address&((1<<PUD_SHIFT)-1))) && len % PUD_SIZE == 0) || \
+		((!(address&((1<<PMD_SHIFT)-1))) && len % PMD_SIZE == 0)) {
+		use_huge_page = 1;
+	}
+
+	vm_flags |= calc_vm_prot_bits(prot, 0) | calc_vm_flag_bits(flags) |
+		mm->def_flags | VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC;
+	// vm_flags |= use_huge_page ? VM_HUGETLB : 0x0;
+	pgprot = vm_get_page_prot(vm_flags);
+
 	cnt = 0;
 	while (cnt < len) {
 		address = fixed_address + cnt;
-
 		pgd = pgd_offset(mm, address);
 		p4d = p4d_alloc(mm, pgd, address);
 		if (!p4d)
@@ -2835,18 +2841,49 @@ long po_map_chunk(unsigned long start, size_t len, unsigned long prot, \
 		pud = pud_alloc(mm, p4d, address);
 		if (!pud)
 			return NULL;
-		pmd = pmd_alloc(mm, pud, address);
-		if (!pmd)
-			return NULL;
-		if (pte_alloc(mm, pmd, address))
-			return NULL;
-		entry = pfn_pte((start+cnt)>>PAGE_SHIFT_REDEFINED, pgprot);
-		if (prot & PROT_WRITE)
-			entry = pte_mkwrite(entry);
-		ptep = pte_offset_map(pmd, address);
-		set_pte(ptep, entry);
-		/* we don't need TLB flush, because it is not present before */
-		cnt += PAGE_SIZE_REDEFINED;
+		/*
+		 * the max allocation size of buddy system is less than 1GB,
+		 * so for now, we will not go into this condition.
+		 */
+		if (use_huge_page && (!(address&((1<<PUD_SHIFT)-1))) && len-cnt >= PUD_SIZE){
+			ptep = huge_pte_offset(mm, address, PUD_SIZE);
+			entry = pfn_pte((start+cnt)>>PAGE_SHIFT_REDEFINED, pgprot);
+			pte_mkhuge(entry);
+			if (prot & PROT_WRITE)
+				entry = pte_mkwrite(entry);
+			set_pte(ptep, entry);
+			cnt += PUD_SIZE;
+			pr_info("len: %d, use 1GB huge page\n", PUD_SIZE);
+		} else if (use_huge_page && (!(address&((1<<PMD_SHIFT)-1))) && len-cnt >= PMD_SIZE) {
+			ptep = huge_pte_offset(mm, address, PMD_SIZE);
+			if (!ptep) {
+				pmd = pmd_alloc(mm, pud, address);
+				if (!pmd)
+					return NULL;
+				ptep = huge_pte_offset(mm, address, PMD_SIZE);
+			}
+			entry = pfn_pte((start+cnt)>>PAGE_SHIFT_REDEFINED, pgprot);
+			pte_mkhuge(entry);
+			if (prot & PROT_WRITE)
+				entry = pte_mkwrite(entry);
+			set_pte(ptep, entry);
+			cnt += PMD_SIZE;
+			pr_info("len: %d, use 2MB huge page\n", PMD_SIZE);
+		} else {
+			pmd = pmd_alloc(mm, pud, address);
+			if (!pmd)
+				return NULL;
+			if (pte_alloc(mm, pmd, address))
+				return NULL;
+			entry = pfn_pte((start+cnt)>>PAGE_SHIFT_REDEFINED, pgprot);
+			if (prot & PROT_WRITE)
+				entry = pte_mkwrite(entry);
+			ptep = pte_offset_map(pmd, address);
+			set_pte(ptep, entry);
+			/* we don't need TLB flush, because it is not present before */
+			cnt += PAGE_SIZE_REDEFINED;
+			//pr_info("len: %d, 4KB page\n", PAGE_SIZE_REDEFINED);
+		}
 	}
 	/* insert vma(fixed_address) into mm_struct */
 	if (down_write_killable(&mm->mmap_sem))
