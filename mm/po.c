@@ -313,9 +313,9 @@ SYSCALL_DEFINE4(po_chunk_mmap, unsigned long, pod, unsigned long, addr, \
 	if (prot & PROT_WRITE)
 		if ((!(desc->flags & O_WRONLY)) && (!(desc->flags & O_RDWR)))
 			return -EINVAL;
-	/* check flags, just support MAP_PRIVATE and MAP_ANONYMOUS */
-	if (flags != MAP_ANONYMOUS && flags != MAP_PRIVATE \
-		&& (flags != (MAP_ANONYMOUS | MAP_PRIVATE)))
+	/* check flags, just support MAP_PRIVATE, MAP_ANONYMOUS and MAP_HUGETLB*/
+	if ((flags | MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB) != \
+		(MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB))
 		return -EINVAL;
 	if ((flags & MAP_ANONYMOUS) && (pod != -1))
 		return -EINVAL;
@@ -405,9 +405,9 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 	if (prot & PROT_WRITE)
 		if ((!(desc->flags & O_WRONLY)) && (!(desc->flags & O_RDWR)))
 			return -EINVAL;
-	/* check flags, just support MAP_PRIVATE and MAP_ANONYMOUS */
-	if (flags != MAP_ANONYMOUS && flags != MAP_PRIVATE \
-		&& (flags != (MAP_ANONYMOUS | MAP_PRIVATE)))
+	/* check flags, just support MAP_PRIVATE, MAP_ANONYMOUS and MAP_HUGETLB*/
+	if ((flags | MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB) != \
+		(MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB))
 		return -EINVAL;
 
 	new_chunk = (struct po_chunk *)kpmalloc(sizeof(*new_chunk), GFP_KERNEL);

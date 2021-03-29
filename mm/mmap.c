@@ -2821,8 +2821,9 @@ long po_map_chunk(unsigned long start, size_t len, unsigned long prot, \
 	 * For now, we do not consider huge page: 2MB and 1GB.
 	 * And we just assume that there are 4-level page tables.
 	 */
-	if (((!(address&((1<<PUD_SHIFT)-1))) && len % PUD_SIZE == 0) || \
-		((!(address&((1<<PMD_SHIFT)-1))) && len % PMD_SIZE == 0)) {
+	if ((flags&MAP_HUGETLB) &&
+		(((!(address&((1<<PUD_SHIFT)-1))) && len % PUD_SIZE == 0) || \
+		((!(address&((1<<PMD_SHIFT)-1))) && len % PMD_SIZE == 0))) {
 		use_huge_page = 1;
 	}
 
