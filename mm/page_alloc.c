@@ -6891,11 +6891,11 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 		entry = e820_table->entries + i;
 		/* for simple, we just manage only one PM zone for now */
 		if ((entry->type == E820_TYPE_PRAM || entry->type == E820_TYPE_PMEM) && \
-			(( node_pfn_boundary == 0 && e820_range_to_nid(entry->addr) == pgdat->node_id ) || (node_pfn_boundary !=0 && entry->addr > node_pfn_boundary && pgdat->node_id == 1)) ) {
+			(( node_pfn_boundary == 0 && e820_range_to_nid(entry->addr) == pgdat->node_id ) || (node_pfn_boundary !=0 && entry->addr > (node_pfn_boundary << PAGE_SHIFT) && pgdat->node_id == 1)) ) {
 			pr_info("strat to register pm_zone at node %d\n", pgdat->node_id);
 			pm_zone = pgdat->node_pm_zones + ZONE_PM_EMU;
 			pm_zone->pm_zone_pgdat = pgdat;
-			pm_zone->node = e820_range_to_nid(entry->addr);
+			pm_zone->node = pgdat->node_id;
 			// make it align to PAGE_SIZE
 			pm_zone->pm_zone_phys_addr = ALIGN(entry->addr, PAGE_SIZE);
 			pm_zone->start_pfn = pm_zone->pm_zone_phys_addr >> PAGE_SHIFT;
