@@ -31,15 +31,16 @@ SYSCALL_DEFINE1(debugger, unsigned int, op)
 	return op;
 }
 
-SYSCALL_DEFINE1(pmem_init)
+SYSCALL_DEFINE0(pmem_init)
 {
+	int nid, i;
 	for_each_online_node(nid) {
 		pg_data_t *pgdat = NODE_DATA(nid);
 		if (pgdat->nr_pm_zones != 0) {
 			for(i = 0; i < MAX_NR_PM_ZONES; i++) {
 				struct pm_zone *zone = &pgdat->node_pm_zones[i];
 				struct pm_super *super = zone->super;
-				super->initialized = flase;
+				super->initialized = false;
 				flush_clwb(super, 64);
 				_mm_sfence();
 			}
