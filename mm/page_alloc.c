@@ -137,7 +137,7 @@ unsigned long totalcma_pages __read_mostly;
 
 #ifdef CONFIG_ZONE_PM_EMU
 unsigned long totalpmem_pages __read_mostly;
-unsigned long node_pfn_boundary;
+unsigned long node_pfn_boundary = 0;
 EXPORT_SYMBOL(node_pfn_boundary);
 #endif
 
@@ -6891,7 +6891,7 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 		entry = e820_table->entries + i;
 		/* for simple, we just manage only one PM zone for now */
 		if ((entry->type == E820_TYPE_PRAM || entry->type == E820_TYPE_PMEM) && \
-			( e820_range_to_nid(entry->addr) == pgdat->node_id )) {
+			(( node_pfn_boundary == 0 && e820_range_to_nid(entry->addr) == pgdat->node_id ) || (node_pfn_boundary !=0 && entry->addr > node_pfn_boundary && pgdat->node_id == 1)) ) {
 			pr_info("strat to register pm_zone at node %d\n", pgdat->node_id);
 			pm_zone = pgdat->node_pm_zones + ZONE_PM_EMU;
 			pm_zone->pm_zone_pgdat = pgdat;
