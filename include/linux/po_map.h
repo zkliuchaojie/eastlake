@@ -48,7 +48,7 @@ struct po_vma
 	struct po_vma *next_pa;
 };
 
-struct po_vma *po_vma_alloc(size_t len);
+struct po_vma *po_vma_alloc(size_t len, unsigned long align_size);
 void po_vma_free(struct po_vma *vma);
 
 #endif

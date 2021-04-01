@@ -385,6 +385,7 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 	struct po_desc *desc;
 	unsigned long v_start;
 	unsigned long cnt, alloc_size;
+	unsigned long align_size;
 	long retval = 0;
 
 	/* check pod */
@@ -414,7 +415,15 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 	if (!new_chunk)
 		return -ENOMEM;
 	if (len > MAX_BUDDY_ALLOC_SIZE) {
-		po_vma = po_vma_alloc(len);
+		align_size = 0;
+		/*
+		 * for now, the max continuous physical memory is less than 1GB.
+		 * so, we use 2MB directly.
+		 */
+		if (flags & MAP_HUGETLB) {
+			align_size = 1UL << PMD_SHIFT;
+		}
+		po_vma = po_vma_alloc(len, align_size);
 		if (!po_vma)
 			return -ENOMEM;
 		nc_map_metadata = (struct po_chunk *)kpmalloc(sizeof(*new_chunk), GFP_KERNEL);

@@ -2822,8 +2822,8 @@ long po_map_chunk(unsigned long start, size_t len, unsigned long prot, \
 	 * And we just assume that there are 4-level page tables.
 	 */
 	if ((flags&MAP_HUGETLB) &&
-		(((!(address&((1<<PUD_SHIFT)-1))) && len % PUD_SIZE == 0) || \
-		((!(address&((1<<PMD_SHIFT)-1))) && len % PMD_SIZE == 0))) {
+		(((!(address&((1UL<<PUD_SHIFT)-1))) && len % PUD_SIZE == 0) || \
+		((!(address&((1UL<<PMD_SHIFT)-1))) && len % PMD_SIZE == 0))) {
 		use_huge_page = 1;
 	}
 
@@ -2846,16 +2846,18 @@ long po_map_chunk(unsigned long start, size_t len, unsigned long prot, \
 		 * the max allocation size of buddy system is less than 1GB,
 		 * so for now, we will not go into this condition.
 		 */
-		if (use_huge_page && (!(address&((1<<PUD_SHIFT)-1))) && len-cnt >= PUD_SIZE){
-			ptep = huge_pte_offset(mm, address, PUD_SIZE);
-			entry = pfn_pte((start+cnt)>>PAGE_SHIFT_REDEFINED, pgprot);
-			pte_mkhuge(entry);
-			if (prot & PROT_WRITE)
-				entry = pte_mkwrite(entry);
-			set_pte(ptep, entry);
-			cnt += PUD_SIZE;
-			pr_info("len: %d, use 1GB huge page\n", PUD_SIZE);
-		} else if (use_huge_page && (!(address&((1<<PMD_SHIFT)-1))) && len-cnt >= PMD_SIZE) {
+		if (use_huge_page && (!(address&((1UL<<PUD_SHIFT)-1))) && len-cnt >= PUD_SIZE){
+			pr_info("should not go here\n");
+			return NULL;
+			// ptep = huge_pte_offset(mm, address, PUD_SIZE);
+			// entry = pfn_pte((start+cnt)>>PAGE_SHIFT_REDEFINED, pgprot);
+			// pte_mkhuge(entry);
+			// if (prot & PROT_WRITE)
+			// 	entry = pte_mkwrite(entry);
+			// set_pte(ptep, entry);
+			// cnt += PUD_SIZE;
+			// pr_info("len: %d, use 1GB huge page\n", PUD_SIZE);
+		} else if (use_huge_page && (!(address&((1UL<<PMD_SHIFT)-1))) && len-cnt >= PMD_SIZE) {
 			ptep = huge_pte_offset(mm, address, PMD_SIZE);
 			if (!ptep) {
 				pmd = pmd_alloc(mm, pud, address);
@@ -2863,11 +2865,13 @@ long po_map_chunk(unsigned long start, size_t len, unsigned long prot, \
 					return NULL;
 				ptep = huge_pte_offset(mm, address, PMD_SIZE);
 			}
-			entry = pfn_pte((start+cnt)>>PAGE_SHIFT_REDEFINED, pgprot);
-			pte_mkhuge(entry);
+			entry = pfn_pte((start+cnt)>>PAGE_SHIFT_REDEFINED, (pgprot));
+			entry = huge_pte_mkdirty(entry);
+			entry = pte_mkyoung(entry);
+			entry = pte_mkhuge(entry);
 			if (prot & PROT_WRITE)
-				entry = pte_mkwrite(entry);
-			set_pte(ptep, entry);
+				entry = huge_pte_mkwrite(entry);
+			set_huge_pte_at(mm, address, ptep, entry);
 			cnt += PMD_SIZE;
 			pr_info("len: %d, use 2MB huge page\n", PMD_SIZE);
 		} else {
