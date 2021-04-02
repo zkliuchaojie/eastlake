@@ -313,9 +313,9 @@ SYSCALL_DEFINE4(po_chunk_mmap, unsigned long, pod, unsigned long, addr, \
 	if (prot & PROT_WRITE)
 		if ((!(desc->flags & O_WRONLY)) && (!(desc->flags & O_RDWR)))
 			return -EINVAL;
-	/* check flags, just support MAP_PRIVATE and MAP_ANONYMOUS */
-	if (flags != MAP_ANONYMOUS && flags != MAP_PRIVATE \
-		&& (flags != (MAP_ANONYMOUS | MAP_PRIVATE)))
+	/* check flags, just support MAP_PRIVATE, MAP_ANONYMOUS and MAP_HUGETLB*/
+	if ((flags | MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB) != \
+		(MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB))
 		return -EINVAL;
 	if ((flags & MAP_ANONYMOUS) && (pod != -1))
 		return -EINVAL;
@@ -385,6 +385,7 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 	struct po_desc *desc;
 	unsigned long v_start;
 	unsigned long cnt, alloc_size;
+	unsigned long align_size;
 	long retval = 0;
 
 	/* check pod */
@@ -405,16 +406,24 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 	if (prot & PROT_WRITE)
 		if ((!(desc->flags & O_WRONLY)) && (!(desc->flags & O_RDWR)))
 			return -EINVAL;
-	/* check flags, just support MAP_PRIVATE and MAP_ANONYMOUS */
-	if (flags != MAP_ANONYMOUS && flags != MAP_PRIVATE \
-		&& (flags != (MAP_ANONYMOUS | MAP_PRIVATE)))
+	/* check flags, just support MAP_PRIVATE, MAP_ANONYMOUS and MAP_HUGETLB*/
+	if ((flags | MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_NUMA_AWARE) != \
+		(MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_NUMA_AWARE))
 		return -EINVAL;
 
 	new_chunk = (struct po_chunk *)kpmalloc(sizeof(*new_chunk), GFP_KERNEL);
 	if (!new_chunk)
 		return -ENOMEM;
 	if (len > MAX_BUDDY_ALLOC_SIZE) {
-		po_vma = po_vma_alloc(len);
+		align_size = 0;
+		/*
+		 * for now, the max continuous physical memory is less than 1GB.
+		 * so, we use 2MB directly.
+		 */
+		if (flags & MAP_HUGETLB) {
+			align_size = 1UL << PMD_SHIFT;
+		}
+		po_vma = po_vma_alloc(len, align_size);
 		if (!po_vma)
 			return -ENOMEM;
 		nc_map_metadata = (struct po_chunk *)kpmalloc(sizeof(*new_chunk), GFP_KERNEL);
@@ -434,8 +443,8 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 			alloc_size = (len-cnt > MAX_BUDDY_ALLOC_SIZE) ? \
 				MAX_BUDDY_ALLOC_SIZE : len - cnt;
 			v_start = (flags & MAP_ANONYMOUS) ? \
-				po_alloc_pt_pages_zeroed(alloc_size, GPFP_KERNEL) : \
-				po_alloc_pt_pages(alloc_size, GPFP_KERNEL);
+				po_alloc_pt_pages_zeroed(alloc_size, GPFP_KERNEL | ((flags&MAP_NUMA_AWARE) ? ___GPFP_NUMA_AWARE : 0x0)) : \
+				po_alloc_pt_pages(alloc_size, GPFP_KERNEL | ((flags&MAP_NUMA_AWARE) ? ___GPFP_NUMA_AWARE : 0x0));
 			if (!v_start)
 				return -ENOMEM;
 			curr = (struct po_chunk *)kpmalloc(sizeof(*new_chunk), GFP_KERNEL);
@@ -449,8 +458,8 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 	} else {
 		alloc_size = len;
 		v_start = (flags & MAP_ANONYMOUS) ? \
-			po_alloc_pt_pages_zeroed(alloc_size, GPFP_KERNEL) : \
-			po_alloc_pt_pages(alloc_size, GPFP_KERNEL);
+			po_alloc_pt_pages_zeroed(alloc_size, GPFP_KERNEL | ((flags&MAP_NUMA_AWARE) ? ___GPFP_NUMA_AWARE : 0x0)) : \
+			po_alloc_pt_pages(alloc_size, GPFP_KERNEL | ((flags&MAP_NUMA_AWARE) ? ___GPFP_NUMA_AWARE : 0x0));
 		if (!v_start) {
 			kpfree(new_chunk);
 			return -ENOMEM;

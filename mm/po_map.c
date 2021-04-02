@@ -2,17 +2,31 @@
 #include <linux/po_map.h>
 #include <linux/pmalloc.h>
 
-struct po_vma *po_vma_alloc(size_t len)
+static unsigned long align_up(unsigned long val, unsigned long align_size)
+{
+	if (align_size == 0)
+		return val;
+	return (val + align_size - 1)&(~(align_size - 1));
+}
+
+static int is_aligned(unsigned long val, unsigned long align_size)
+{
+	if (align_size == 0)
+		return 1;
+	return !(val&(align_size - 1));
+}
+
+struct po_vma *po_vma_alloc(size_t len, unsigned long align_size)
 {
 	struct po_super *super;
-	struct po_vma 	*prev_vma, *curr_vma, *new_vma;
+	struct po_vma 	*prev_vma, *curr_vma, *new_vma, *new_vma1;
 
 	super = po_get_super();
 	if (super->vma_free_list_pa == NULL)
 		return NULL;
 	prev_vma = phys_to_virt(super->vma_free_list_pa);
 	curr_vma = prev_vma;
-	while (len > curr_vma->size) {
+	while (align_up(curr_vma->start, align_size) + len > curr_vma->start + curr_vma->size) {
 		prev_vma = curr_vma;
 		curr_vma = curr_vma->next_pa;
 		if (curr_vma == NULL)
@@ -22,30 +36,64 @@ struct po_vma *po_vma_alloc(size_t len)
 	if (curr_vma == NULL)
 		return NULL;
 	if (curr_vma == phys_to_virt(super->vma_free_list_pa)) {
-		if (curr_vma->size == len) {
+		if (is_aligned(curr_vma->start, align_size) && curr_vma->size == len) {
 			super->vma_free_list_pa = curr_vma->next_pa;
 			return curr_vma;
 		} else {
-			new_vma = kpmalloc(sizeof(struct po_vma), GFP_KERNEL);
-			new_vma->start = curr_vma->start + len;
-			new_vma->size = curr_vma->size - len;
-			new_vma->next_pa = curr_vma->next_pa;
-			super->vma_free_list_pa = virt_to_phys(new_vma);
-			curr_vma->size = len;
-			return curr_vma;
+			if (is_aligned(curr_vma->start, align_size)) {
+				new_vma = kpmalloc(sizeof(struct po_vma), GFP_KERNEL);
+				new_vma->start = curr_vma->start + len;
+				new_vma->size = curr_vma->size - len;
+				new_vma->next_pa = curr_vma->next_pa;
+				super->vma_free_list_pa = virt_to_phys(new_vma);
+				curr_vma->size = len;
+				return curr_vma;
+			} else {
+				new_vma = kpmalloc(sizeof(struct po_vma), GFP_KERNEL);
+				new_vma1 = kpmalloc(sizeof(struct po_vma), GFP_KERNEL);
+                                new_vma->start = curr_vma->start;
+                                new_vma->size = align_up(curr_vma->start, align_size) - curr_vma->start;
+				new_vma->next_pa = virt_to_phys(new_vma1);
+
+				new_vma1->start = align_up(curr_vma->start, align_size) + len;
+				new_vma1->size = curr_vma->size - new_vma1->size - len;
+				new_vma1->next_pa = curr_vma->next_pa;
+				super->vma_free_list_pa = virt_to_phys(new_vma);
+
+				curr_vma->start = align_up(curr_vma->start, align_size);
+				curr_vma->size = len;
+				return curr_vma;
+			}
 		}
 	} else {
-		if (curr_vma->size == len) {
+		if (is_aligned(curr_vma->start, align_size) && curr_vma->size == len) {
 			prev_vma->next_pa = curr_vma->next_pa;
 			return curr_vma;
 		} else {
-			new_vma = kpmalloc(sizeof(struct po_vma), GFP_KERNEL);
-			new_vma->start = curr_vma->start + len;
-			new_vma->size = curr_vma->size - len;
-			new_vma->next_pa = curr_vma->next_pa;
-			prev_vma->next_pa = virt_to_phys(new_vma);
-			curr_vma->size = len;
-			return curr_vma;
+			if (is_aligned(curr_vma->start, align_size)) {
+				new_vma = kpmalloc(sizeof(struct po_vma), GFP_KERNEL);
+				new_vma->start = curr_vma->start + len;
+				new_vma->size = curr_vma->size - len;
+				new_vma->next_pa = curr_vma->next_pa;
+				prev_vma->next_pa = virt_to_phys(new_vma);
+				curr_vma->size = len;
+				return curr_vma;
+			} else {
+				new_vma = kpmalloc(sizeof(struct po_vma), GFP_KERNEL);
+				new_vma1 = kpmalloc(sizeof(struct po_vma), GFP_KERNEL);
+				new_vma->start = curr_vma->start;
+				new_vma->size = align_up(curr_vma->start, align_size) - curr_vma->start;
+				new_vma->next_pa = virt_to_phys(new_vma1);
+
+				new_vma1->start = align_up(curr_vma->start, align_size) + len;
+				new_vma1->size = curr_vma->size - new_vma1->size - len;
+				new_vma1->next_pa = curr_vma->next_pa;
+				prev_vma->next_pa = virt_to_phys(new_vma);
+
+				curr_vma->start = align_up(curr_vma->start, align_size);
+				curr_vma->size = len;
+				return curr_vma;
+			}
 		}
 	}
 }

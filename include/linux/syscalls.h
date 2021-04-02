@@ -925,6 +925,7 @@ asmlinkage long sys_po_stat(const char __user *poname, struct po_stat __user *st
 asmlinkage long sys_po_fstat(unsigned long pod, struct po_stat __user *statbuf);
 asmlinkage long sys_po_fstat(unsigned long pod, unsigned long last, size_t size, unsigned long __user *addrbuf);
 asmlinkage long sys_debugger(unsigned long op);
+asmlinkage void sys_pmem_init();
 
 /*
  * Architecture-specific system calls

@@ -18,7 +18,7 @@
 #define pt_page_to_phys(page)	(pt_page_to_pfn(page)<<PAGE_SHIFT_REDEFINED)
 #define virt_to_pt_page(p)	pfn_to_pt_page((virt_to_phys(p)>>PAGE_SHIFT_REDEFINED))
 #define phys_to_pt_page(phys)	pfn_to_pt_page(phys>>PAGE_SHIFT_REDEFINED)
-#define MAX_BUDDY_ALLOC_SIZE	((MAX_ORDER - 1) << PAGE_SHIFT_REDEFINED)
+#define MAX_BUDDY_ALLOC_SIZE	(1UL << (MAX_ORDER - 1 + PAGE_SHIFT_REDEFINED))
 
 /*
  * alloc_pt_pages/free_pt_pages is used to alloc/free AEP space,
@@ -37,7 +37,7 @@ static void *po_alloc_pt_pages(size_t size, gpfp_t flags)
 	order = 0;
 	for (; tmp < size; order++)
 		tmp *= 2;
-	page = alloc_pt_pages_node(0, flags, order);
+	page = alloc_pt_pages_node((flags&___GPFP_NUMA_AWARE) ? NUMA_NO_NODE : 0, flags, order);
 	if (page == NULL)
 		return NULL;
 	return (void*)pt_page_to_virt(page);
@@ -81,7 +81,7 @@ static void *kpmalloc(size_t size, gpfp_t flags)
 
 	if (size > PAGE_SIZE_REDEFINED)
 		return NULL;
-	page = alloc_pt_pages_node(0, flags, 0);
+	page = alloc_pt_pages_node((flags&___GPFP_NUMA_AWARE) ? NUMA_NO_NODE : 0, flags, 0);
 	if (page == NULL)
 		return NULL;
 	return (void*)pt_page_to_virt(page);

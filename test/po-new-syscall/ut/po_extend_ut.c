@@ -16,8 +16,10 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 
-#define PAGE_SIZE_REDEFINED	(4*1024)
-#define MAX_BUDDY_ALLOC_SIZE    (PAGE_SIZE_REDEFINED << 10)
+#define MAP_NUMA_AWARE         0x400000
+
+#define PAGE_SIZE_REDEFINED	(4*1024UL)
+#define MAX_BUDDY_ALLOC_SIZE    (PAGE_SIZE_REDEFINED << 15)
 
 TEST(po_extend, simple_test)
 {
@@ -216,6 +218,86 @@ TEST(po_extend, extend_with_MAP_ANONYMOUS)
 		// printf("%d ", c[i]);
 		ASSERT_EQ(c[i], 0);
 	}
+
+	retval1 = syscall(403, pod1, 0);
+	ASSERT_GE(retval1, 0);
+
+	retval1 = syscall(401, poname, 0);
+	ASSERT_EQ(retval1, 0);
+}
+
+TEST(po_extend, hugepage_simple_test)
+{
+	char poname[] = "f";
+	int pod1;
+	long long retval1;
+	char *c;
+	long i;
+
+	pod1 = syscall(400, poname);
+	ASSERT_GE(pod1, 0);
+
+	c = (char *)syscall(406, pod1, MAX_BUDDY_ALLOC_SIZE*2, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_HUGETLB);
+	ASSERT_GE((unsigned long)c, 0);
+	// c[0] = 'a';
+	for (i=0; i<MAX_BUDDY_ALLOC_SIZE*2; i++) {
+		//printf("i: %ld, &i: %#lx\n", i, &(c[i]));
+		c[i] = i;
+		//printf("%c\n", c[i]);
+	}
+	//printf("%c\n", c[0]);
+
+	retval1 = syscall(403, pod1, 0);
+	ASSERT_GE(retval1, 0);
+
+	retval1 = syscall(401, poname, 0);
+	ASSERT_EQ(retval1, 0);
+}
+
+TEST(po_extend, numa_aware_simple_test)
+{
+	char poname[] = "f";
+	int pod1;
+	long long retval1;
+	char *c;
+	long i;
+
+	pod1 = syscall(400, poname);
+	ASSERT_GE(pod1, 0);
+
+	c = (char *)syscall(406, pod1, MAX_BUDDY_ALLOC_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_NUMA_AWARE);
+	ASSERT_GE((unsigned long)c, 0);
+	c[0] = 'a';
+	for (i=0; i<MAX_BUDDY_ALLOC_SIZE; i++) {
+		c[i] = i;
+	}
+	//printf("%c\n", c[0]);
+
+	retval1 = syscall(403, pod1, 0);
+	ASSERT_GE(retval1, 0);
+
+	retval1 = syscall(401, poname, 0);
+	ASSERT_EQ(retval1, 0);
+}
+
+TEST(po_extend, numa_aware_and_hugepage_simple_test)
+{
+	char poname[] = "f";
+	int pod1;
+	long long retval1;
+	char *c;
+	long i;
+
+	pod1 = syscall(400, poname);
+	ASSERT_GE(pod1, 0);
+
+	c = (char *)syscall(406, pod1, MAX_BUDDY_ALLOC_SIZE*64, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_NUMA_AWARE | MAP_HUGETLB);
+	ASSERT_GE((unsigned long)c, 0);
+	c[0] = 'a';
+	for (i=0; i<MAX_BUDDY_ALLOC_SIZE*64; i++) {
+		c[i] = i;
+	}
+	//printf("%c\n", c[0]);
 
 	retval1 = syscall(403, pod1, 0);
 	ASSERT_GE(retval1, 0);

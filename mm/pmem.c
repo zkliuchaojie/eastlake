@@ -31,6 +31,23 @@ SYSCALL_DEFINE1(debugger, unsigned int, op)
 	return op;
 }
 
+SYSCALL_DEFINE0(pmem_init)
+{
+	int nid, i;
+	for_each_online_node(nid) {
+		pg_data_t *pgdat = NODE_DATA(nid);
+		if (pgdat->nr_pm_zones != 0) {
+			for(i = 0; i < MAX_NR_PM_ZONES; i++) {
+				struct pm_zone *zone = &pgdat->node_pm_zones[i];
+				struct pm_super *super = zone->super;
+				super->initialized = false;
+				flush_clwb(super, 64);
+				_mm_sfence();
+			}
+		}
+	}
+}
+
 inline unsigned long global_pm_zone_free_pages(void)
 {
 	unsigned long free_pages = 0;
@@ -64,7 +81,7 @@ inline void extend_memory_with_pmem(void)
 		vms_list.number = 0;
 	}
 
-	page = alloc_pt_pages_node(0, GPFP_KERNEL, SECTION_SIZE_BITS - PAGE_SHIFT);
+	page = alloc_pt_pages_node(NUMA_NO_NODE, GPFP_KERNEL, SECTION_SIZE_BITS - PAGE_SHIFT);
 	if (page != NULL) {
 		start = (pt_page_to_pfn(page)<<12);
 		size = (1UL << (SECTION_SIZE_BITS));

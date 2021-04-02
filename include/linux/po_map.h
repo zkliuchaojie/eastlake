@@ -25,11 +25,11 @@
 				(256UL << PAGE_SHIFT_REDEFINED))
 #define MAX_RANDOM		(((1UL << 32) - 1) << PAGE_SHIFT_REDEFINED)
 
-#define PO_MAP_AREA_SIZE	0x200000000000	// 32TB
-#define PO_MAP_AREA_START	(DEFAULT_MAP_WINDOW_REDEFINED - \
+#define PO_MAP_AREA_SIZE	(0x200000000000UL)	// 32TB
+#define PO_MAP_AREA_START	(((DEFAULT_MAP_WINDOW_REDEFINED - \
 				MAX_GAP - \
 				MAX_RANDOM - \
-				PO_MAP_AREA_SIZE)
+				PO_MAP_AREA_SIZE) >> 30) << 30)
 
 #define PO_NON_CONTINUOUS_MAP_SIZE 		(PO_MAP_AREA_SIZE/2)
 #define PO_NON_CONTINUOUS_MAP_AREA_START	(PO_MAP_AREA_START + \
@@ -48,7 +48,7 @@ struct po_vma
 	struct po_vma *next_pa;
 };
 
-struct po_vma *po_vma_alloc(size_t len);
+struct po_vma *po_vma_alloc(size_t len, unsigned long align_size);
 void po_vma_free(struct po_vma *vma);
 
 #endif

@@ -23,6 +23,7 @@
 #include "sched.h"
 
 #include <trace/events/sched.h>
+#include <linux/po_map.h>
 
 /*
  * Targeted preemption latency for CPU-bound tasks:
@@ -2586,6 +2587,12 @@ void task_numa_work(struct callback_head *work)
 	for (; vma; vma = vma->vm_next) {
 		if (!vma_migratable(vma) || !vma_policy_mof(vma) ||
 			is_vm_hugetlb_page(vma) || (vma->vm_flags & VM_MIXEDMAP)) {
+			continue;
+		}
+
+		if (vma->vm_start >= PO_MAP_AREA_START &&
+			vma->vm_end < PO_MAP_AREA_END  &&
+			vma->vm_flags & VM_USE_PM) {
 			continue;
 		}
 
