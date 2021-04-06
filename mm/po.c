@@ -20,6 +20,12 @@
 #include <linux/mm.h>
 #include <linux/string.h>
 
+
+/*
+ * protect syscalls of persistent object.
+ */
+DEFINE_SPINLOCK(po_lock);
+
 void po_free_chunk(struct po_chunk *chunk);
 void po_free_nc_chunk(struct po_chunk *nc_map_metadata);
 
@@ -112,6 +118,7 @@ SYSCALL_DEFINE2(po_creat, const char __user *, poname, umode_t, mode)
 	struct po_ns_record *rcd;
 	struct po_desc *desc;
 	int retval;
+	unsigned long flags;
 
 	kponame = kmalloc(MAX_PO_NAME_LENGTH, GFP_KERNEL);
 	if (!kponame)
@@ -132,9 +139,12 @@ SYSCALL_DEFINE2(po_creat, const char __user *, poname, umode_t, mode)
 		}
 	}
 
+	spin_lock_irqsave(&po_lock, flags);
 	rcd = po_ns_insert(kponame, len);
-	if (rcd == NULL)
+	if (rcd == NULL) {
+		spin_unlock_irqrestore(&po_lock, flags);
 		return -EEXIST;
+	}
 
 	desc = kpmalloc(sizeof(*desc), GFP_KERNEL);
 	desc->size = 0;
@@ -152,10 +162,12 @@ SYSCALL_DEFINE2(po_creat, const char __user *, poname, umode_t, mode)
 		po_ns_delete(kponame, len);
 		kfree(kponame);
 		kpfree(desc);
+		spin_unlock_irqrestore(&po_lock, flags);
 		return retval;
 	}
 
 	kfree(kponame);
+	spin_unlock_irqrestore(&po_lock, flags);
 	return retval;
 }
 
@@ -169,6 +181,7 @@ SYSCALL_DEFINE1(po_unlink, const char __user *, poname)
 	int retval;
 	unsigned long cnt;
 	unsigned long address;
+	unsigned long flags;
 
 	kponame = kmalloc(MAX_PO_NAME_LENGTH, GFP_KERNEL);
 	if (!kponame)
@@ -189,15 +202,18 @@ SYSCALL_DEFINE1(po_unlink, const char __user *, poname)
 		}
 	}
 
+	spin_lock_irqsave(&po_lock, flags);
 	/* check whether po is opened(busy) */
 	rcd = po_ns_search(kponame, len);
 	if (rcd == NULL) {
 		kfree(kponame);
+		spin_unlock_irqrestore(&po_lock, flags);
 		return -ENOENT;
 	}
 	desc = (struct po_desc *)phys_to_virt(rcd->desc);
 	if (pos_is_open(desc) == true) {
 		kfree(kponame);
+		spin_unlock_irqrestore(&po_lock, flags);
 		return -EBUSY;
 	}
 
@@ -214,6 +230,7 @@ SYSCALL_DEFINE1(po_unlink, const char __user *, poname)
 	po_ns_delete(kponame, len);
 	kpfree(rcd);
 	kfree(kponame);
+	spin_unlock_irqrestore(&po_lock, flags);
 	return 0;
 }
 
@@ -224,6 +241,7 @@ SYSCALL_DEFINE3(po_open, const char __user *, poname, int, flags, umode_t, mode)
 	struct po_ns_record *rcd;
 	struct po_desc *desc;
 	int retval;
+	unsigned long irq_flags;
 
 	kponame = kmalloc(MAX_PO_NAME_LENGTH, GFP_KERNEL);
 	if (!kponame)
@@ -244,12 +262,14 @@ SYSCALL_DEFINE3(po_open, const char __user *, poname, int, flags, umode_t, mode)
 		}
 	}
 
+	spin_lock_irqsave(&po_lock, irq_flags);
 	rcd = po_ns_search(kponame, len);
 	if (rcd == NULL) {
 		if (flags & O_CREAT) {
 			rcd = po_ns_insert(kponame, len);
 			if (rcd == NULL) {
 				kfree(kponame);
+				spin_unlock_irqrestore(&po_lock, irq_flags);
 				return -ENOENT;
 			}
 			desc = kpmalloc(sizeof(*desc), GFP_KERNEL);
@@ -263,6 +283,7 @@ SYSCALL_DEFINE3(po_open, const char __user *, poname, int, flags, umode_t, mode)
 			rcd->desc = (struct po_desc *)virt_to_phys(desc);
 		} else {
 			kfree(kponame);
+			spin_unlock_irqrestore(&po_lock, irq_flags);
 			return -ENOENT;
 		}
 	} else {
@@ -275,10 +296,12 @@ SYSCALL_DEFINE3(po_open, const char __user *, poname, int, flags, umode_t, mode)
 		po_ns_delete(kponame, len);
 		kfree(kponame);
 		kpfree(desc);
+		spin_unlock_irqrestore(&po_lock, irq_flags);
 		return retval;
 	}
 
 	kfree(kponame);
+	spin_unlock_irqrestore(&po_lock, irq_flags);
 	return retval;
 }
 
@@ -290,7 +313,14 @@ SYSCALL_DEFINE3(po_open, const char __user *, poname, int, flags, umode_t, mode)
  */
 SYSCALL_DEFINE1(po_close, unsigned int, pod)
 {
-	return pos_delete(pod);
+	int retval;
+	unsigned long flags;
+
+	spin_lock_irqsave(&po_lock, flags);
+	retval = pos_delete(pod);
+	spin_unlock_irqrestore(&po_lock, flags);
+
+	return retval;
 }
 
 SYSCALL_DEFINE4(po_chunk_mmap, unsigned long, pod, unsigned long, addr, \
@@ -298,27 +328,43 @@ SYSCALL_DEFINE4(po_chunk_mmap, unsigned long, pod, unsigned long, addr, \
 {
 	struct po_desc *desc;
 	struct po_chunk *chunk, *chunk_pa;
+	unsigned long retval;
+	unsigned long irq_flags;
 
+	spin_lock_irqsave(&po_lock, irq_flags);
 	desc = pos_get(pod);
-	if (!desc)
+
+	if (!desc) {
+		spin_unlock_irqrestore(&po_lock, irq_flags);
 		return -EBADF;
+	}
 	/* check prot, just support PROT_NONE, PROT_READ and PROT_WRITE */
 	if (prot != PROT_NONE \
 		&& prot != PROT_READ && prot != PROT_WRITE \
-		&& (prot != (PROT_READ | PROT_WRITE)))
+		&& (prot != (PROT_READ | PROT_WRITE))) {
+		spin_unlock_irqrestore(&po_lock, irq_flags);
 		return -EINVAL;
+	}
 	if (prot & PROT_READ)
-		if ((!(desc->flags & O_RDONLY)) && (!(desc->flags & O_RDWR)))
+		if ((!(desc->flags & O_RDONLY)) && (!(desc->flags & O_RDWR))) {
+			spin_unlock_irqrestore(&po_lock, irq_flags);
 			return -EINVAL;
+		}
 	if (prot & PROT_WRITE)
-		if ((!(desc->flags & O_WRONLY)) && (!(desc->flags & O_RDWR)))
+		if ((!(desc->flags & O_WRONLY)) && (!(desc->flags & O_RDWR))) {
+			spin_unlock_irqrestore(&po_lock, irq_flags);
 			return -EINVAL;
+		}
 	/* check flags, just support MAP_PRIVATE, MAP_ANONYMOUS and MAP_HUGETLB*/
 	if ((flags | MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB) != \
-		(MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB))
+		(MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB)) {
+		spin_unlock_irqrestore(&po_lock, irq_flags);
 		return -EINVAL;
-	if ((flags & MAP_ANONYMOUS) && (pod != -1))
+	}
+	if ((flags & MAP_ANONYMOUS) && (pod != -1)) {
+		spin_unlock_irqrestore(&po_lock, irq_flags);
 		return -EINVAL;
+	}
 
 	chunk_pa = desc->data_pa;
 	while (chunk_pa != NULL) {
@@ -327,9 +373,13 @@ SYSCALL_DEFINE4(po_chunk_mmap, unsigned long, pod, unsigned long, addr, \
 			break;
 		chunk_pa = chunk->next_pa;
 	}
-	if (!chunk_pa)
+	if (!chunk_pa) {
+		spin_unlock_irqrestore(&po_lock, irq_flags);
 		return -EINVAL;
-	return po_prepare_map_chunk(chunk, prot, flags | MAP_USE_PM);
+	}
+	retval = po_prepare_map_chunk(chunk, prot, flags | MAP_USE_PM);
+	spin_unlock_irqrestore(&po_lock, irq_flags);
+	return retval;
 }
 
 /*
@@ -337,11 +387,19 @@ SYSCALL_DEFINE4(po_chunk_mmap, unsigned long, pod, unsigned long, addr, \
  */
 SYSCALL_DEFINE1(po_chunk_munmap, unsigned long, addr)
 {
+	unsigned long retval;
+	unsigned long flags;
+
 	if ((PAGE_SIZE_REDEFINED - 1) & addr)
 		return -EINVAL;
 	if (!(addr >= PO_MAP_AREA_START && addr < PO_MAP_AREA_END))
 		return -EINVAL;
-	return po_unmap_chunk(addr);
+
+	spin_lock_irqsave(&po_lock, flags);
+	retval = po_unmap_chunk(addr);
+	spin_unlock_irqrestore(&po_lock, flags);
+
+	return retval;
 }
 
 long po_prepare_map_chunk(struct po_chunk *chunk, unsigned long prot, \
@@ -387,33 +445,50 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 	unsigned long cnt, alloc_size;
 	unsigned long align_size;
 	long retval = 0;
+	unsigned long irq_flags;
 
 	/* check pod */
+	spin_lock_irqsave(&po_lock, irq_flags);
 	desc = pos_get(pod);
-	if (!desc)
+	if (!desc) {
+		spin_unlock_irqrestore(&po_lock, irq_flags);
 		return -EBADF;
+	}
 	/* check len */
-	if ((len <= 0) || ((PAGE_SIZE_REDEFINED - 1) & len))
+	if ((len <= 0) || ((PAGE_SIZE_REDEFINED - 1) & len)) {
+		spin_unlock_irqrestore(&po_lock, irq_flags);
 		return -EINVAL;
+	}
 	/* check prot, just support PROT_NONE, PROT_READ and PROT_WRITE */
 	if (prot != PROT_NONE \
 		&& prot != PROT_READ && prot != PROT_WRITE \
-		&& (prot != (PROT_READ | PROT_WRITE)))
+		&& (prot != (PROT_READ | PROT_WRITE))) {
+		spin_unlock_irqrestore(&po_lock, irq_flags);
 		return -EINVAL;
+	}
 	if (prot & PROT_READ)
-		if ((!(desc->flags & O_RDONLY)) && (!(desc->flags & O_RDWR)))
+		if ((!(desc->flags & O_RDONLY)) && (!(desc->flags & O_RDWR))) {
+			spin_unlock_irqrestore(&po_lock, irq_flags);
 			return -EINVAL;
+		}
 	if (prot & PROT_WRITE)
-		if ((!(desc->flags & O_WRONLY)) && (!(desc->flags & O_RDWR)))
+		if ((!(desc->flags & O_WRONLY)) && (!(desc->flags & O_RDWR))) {
+			spin_unlock_irqrestore(&po_lock, irq_flags);
 			return -EINVAL;
+		}
 	/* check flags, just support MAP_PRIVATE, MAP_ANONYMOUS and MAP_HUGETLB*/
 	if ((flags | MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_NUMA_AWARE) != \
-		(MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_NUMA_AWARE))
+		(MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_NUMA_AWARE)) {
+		spin_unlock_irqrestore(&po_lock, irq_flags);
 		return -EINVAL;
+	}
 
 	new_chunk = (struct po_chunk *)kpmalloc(sizeof(*new_chunk), GFP_KERNEL);
-	if (!new_chunk)
+	if (!new_chunk) {
+		spin_unlock_irqrestore(&po_lock, irq_flags);
 		return -ENOMEM;
+	}
+
 	if (len > MAX_BUDDY_ALLOC_SIZE) {
 		align_size = 0;
 		/*
@@ -424,11 +499,15 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 			align_size = 1UL << PMD_SHIFT;
 		}
 		po_vma = po_vma_alloc(len, align_size);
-		if (!po_vma)
+		if (!po_vma) {
+			spin_unlock_irqrestore(&po_lock, irq_flags);
 			return -ENOMEM;
+		}
 		nc_map_metadata = (struct po_chunk *)kpmalloc(sizeof(*new_chunk), GFP_KERNEL);
-		if (!nc_map_metadata)
+		if (!nc_map_metadata) {
+			spin_unlock_irqrestore(&po_lock, irq_flags);
 			return -ENOMEM;
+		}
 		nc_map_metadata->start = virt_to_phys(po_vma);
 		nc_map_metadata->size = len;
 		nc_map_metadata->next_pa = NULL;
@@ -445,8 +524,10 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 			v_start = (flags & MAP_ANONYMOUS) ? \
 				po_alloc_pt_pages_zeroed(alloc_size, GPFP_KERNEL | ((flags&MAP_NUMA_AWARE) ? ___GPFP_NUMA_AWARE : 0x0)) : \
 				po_alloc_pt_pages(alloc_size, GPFP_KERNEL | ((flags&MAP_NUMA_AWARE) ? ___GPFP_NUMA_AWARE : 0x0));
-			if (!v_start)
+			if (!v_start) {
+				spin_unlock_irqrestore(&po_lock, irq_flags);
 				return -ENOMEM;
+			}
 			curr = (struct po_chunk *)kpmalloc(sizeof(*new_chunk), GFP_KERNEL);
 			curr->start = virt_to_phys(v_start);
 			curr->size = alloc_size;
@@ -462,6 +543,7 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 			po_alloc_pt_pages(alloc_size, GPFP_KERNEL | ((flags&MAP_NUMA_AWARE) ? ___GPFP_NUMA_AWARE : 0x0));
 		if (!v_start) {
 			kpfree(new_chunk);
+			spin_unlock_irqrestore(&po_lock, irq_flags);
 			return -ENOMEM;
 		}
 		new_chunk->start = virt_to_phys(v_start);
@@ -479,9 +561,12 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 	}
 
 	retval = po_prepare_map_chunk(new_chunk, prot, flags | MAP_USE_PM);
-	if (retval < 0)
+	if (retval < 0) {
+		spin_unlock_irqrestore(&po_lock, irq_flags);
 		return retval;
+	}
 	desc->size += len;
+	spin_unlock_irqrestore(&po_lock, irq_flags);
 	return retval;
 }
 
@@ -531,18 +616,30 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 	struct po_chunk *tail_chunk;
 	unsigned long start;
 	long ret = 0;
+	unsigned long flags;
 
+	spin_lock_irqsave(&po_lock, flags);
 	desc = pos_get(pod);
-	if (!desc)
-		return -EBADF;
-	/* check addr and len */
-	if ((addr <= 0) || ((PAGE_SIZE_REDEFINED - 1) & addr))
-		return -EINVAL;
-	if ((len <= 0) || ((PAGE_SIZE_REDEFINED - 1) & len))
-		return -EINVAL;
 
-	if (desc->data_pa == NULL)
+	if (!desc) {
+		spin_unlock_irqrestore(&po_lock, flags);
+		return -EBADF;
+	}
+	/* check addr and len */
+	if ((addr <= 0) || ((PAGE_SIZE_REDEFINED - 1) & addr)) {
+		spin_unlock_irqrestore(&po_lock, flags);
+		return -EINVAL;
+	}
+	if ((len <= 0) || ((PAGE_SIZE_REDEFINED - 1) & len)) {
+		spin_unlock_irqrestore(&po_lock, flags);
+		return -EINVAL;
+	}
+
+	if (desc->data_pa == NULL) {
+		spin_unlock_irqrestore(&po_lock, flags);
 		return 0;
+	}
+
 	curr = (struct po_chunk *)phys_to_virt(desc->data_pa);
 	start = get_chunk_map_start(curr);
 	if (addr == start) {
@@ -566,15 +663,20 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 		prev = curr;
 		curr = prev->next_pa == NULL ? NULL : phys_to_virt(prev->next_pa);
 	}
-	if (curr == NULL)
+	if (curr == NULL) {
+		spin_unlock_irqrestore(&po_lock, flags);
 		return 0;
+	}
 
 unmap_and_free_chunk:
 	ret = po_unmap_chunk(addr);
-	if (ret < 0)
+	if (ret < 0) {
+		spin_unlock_irqrestore(&po_lock, flags);
 		return ret;
+	}
 	po_free_chunk(curr);
 	desc->size -= curr->size;
+	spin_unlock_irqrestore(&po_lock, flags);
 	return 0;
 }
 
@@ -585,6 +687,7 @@ SYSCALL_DEFINE2(po_stat, const char __user *, poname, struct po_stat __user *, s
 	struct po_ns_record *rcd;
 	struct po_desc *desc;
 	struct po_stat *tmp;
+	unsigned long flags;
 
 	kponame = kmalloc(MAX_PO_NAME_LENGTH, GFP_KERNEL);
 	if (!kponame)
@@ -610,20 +713,26 @@ SYSCALL_DEFINE2(po_stat, const char __user *, poname, struct po_stat __user *, s
 		return -EFAULT;
 	}
 
+	spin_lock_irqsave(&po_lock, flags);
 	rcd = po_ns_search(kponame, len);
 	kfree(kponame);
-	if (rcd == NULL)
+	if (rcd == NULL) {
+		spin_unlock_irqrestore(&po_lock, flags);
 		return -ENOENT;
+	}
 	desc = (struct po_desc *)phys_to_virt(rcd->desc);
 	tmp = kmalloc(sizeof(struct po_stat), GFP_KERNEL);
-	if (!tmp)
+	if (!tmp) {
+		spin_unlock_irqrestore(&po_lock, flags);
 		return -ENOMEM;
+	}
 	tmp->st_mode = desc->mode;
 	tmp->st_uid = desc->uid;
 	tmp->st_gid = desc->gid;
 	tmp->st_size = desc->size;
 	copy_to_user(statbuf, tmp, sizeof(struct po_stat));
 	kfree(tmp);
+	spin_unlock_irqrestore(&po_lock, flags);
 	return 0;
 }
 
@@ -631,22 +740,30 @@ SYSCALL_DEFINE2(po_fstat, unsigned long, pod, struct po_stat __user *, statbuf)
 {
 	struct po_desc *desc;
 	struct po_stat *tmp;
+	unsigned long flags;
 
 	/* check statbuf */
 	if (!access_ok(VERIFY_WRITE, statbuf, sizeof(struct po_stat)))
 		return -EFAULT;
+
+	spin_lock_irqsave(&po_lock, flags);
 	desc = pos_get(pod);
-	if (!desc)
+	if (!desc) {
+		spin_unlock_irqrestore(&po_lock, flags);
 		return -EBADF;
+	}
 	tmp = kmalloc(sizeof(struct po_stat), GFP_KERNEL);
-	if (!tmp)
+	if (!tmp) {
+		spin_unlock_irqrestore(&po_lock, flags);
 		return -ENOMEM;
+	}
 	tmp->st_mode = desc->mode;
 	tmp->st_uid = desc->uid;
 	tmp->st_gid = desc->gid;
 	tmp->st_size = desc->size;
 	copy_to_user(statbuf, tmp, sizeof(struct po_stat));
 	kfree(tmp);
+	spin_unlock_irqrestore(&po_lock, flags);
 	return 0;
 }
 
@@ -657,16 +774,22 @@ SYSCALL_DEFINE4(po_chunk_next, unsigned long, pod, unsigned long, last, \
 	unsigned long *tmp;
 	struct po_chunk *chunk, *chunk_pa;
 	int cnt;
+	unsigned long flags;
 
 	/* check addrbuf */
 	if (!access_ok(VERIFY_WRITE, addrbuf, sizeof(unsigned long)*size))
 		return -EFAULT;
+	spin_lock_irqsave(&po_lock, flags);
 	desc = pos_get(pod);
-	if (!desc)
+	if (!desc) {
+		spin_unlock_irqrestore(&po_lock, flags);
 		return -EBADF;
+	}
 	tmp = kmalloc(sizeof(unsigned long)*size, GFP_KERNEL);
-	if (!tmp)
+	if (!tmp) {
+		spin_unlock_irqrestore(&po_lock, flags);
 		return -ENOMEM;
+	}
 	memset(tmp, 0, sizeof(unsigned long)*size);
 
 	chunk_pa = desc->data_pa;
@@ -688,6 +811,7 @@ SYSCALL_DEFINE4(po_chunk_next, unsigned long, pod, unsigned long, last, \
 	}
 	copy_to_user(addrbuf, tmp, sizeof(unsigned long)*size);
 	kfree(tmp);
+	spin_unlock_irqrestore(&po_lock, flags);
 	return 0;
 }
 
