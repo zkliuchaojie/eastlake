@@ -19,7 +19,7 @@
 #include <linux/pmalloc.h>
 #include <linux/mm.h>
 #include <linux/string.h>
-
+#include <linux/pflush.h>
 
 /*
  * protect syscalls of persistent object.
@@ -153,8 +153,11 @@ SYSCALL_DEFINE2(po_creat, const char __user *, poname, umode_t, mode)
 	desc->gid = current_gid().val;
 	desc->mode = mode;
 	desc->flags = O_CREAT|O_RDWR;
+	flush_clwb(desc, sizeof(*desc));
+	_mm_sfence();
 	rcd->desc = (struct po_desc *)virt_to_phys(desc);
-
+	flush_clwb(&(rcd->desc), sizeof(rcd->desc));
+	_mm_sfence();
 
 	retval = pos_insert(desc);
 	if (retval < 0) {
@@ -278,7 +281,11 @@ SYSCALL_DEFINE3(po_open, const char __user *, poname, int, flags, umode_t, mode)
 			desc->gid = current_gid().val;
 			desc->mode = mode;
 			desc->flags = flags;
+			flush_clwb(desc, sizeof(*desc));
+			_mm_sfence();
 			rcd->desc = (struct po_desc *)virt_to_phys(desc);
+			flush_clwb(&(rcd->desc), sizeof(rcd->desc));
+			_mm_sfence();
 		} else {
 			kfree(kponame);
 			spin_unlock_irqrestore(&po_lock, irq_flags);
@@ -533,6 +540,9 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 			prev->next_pa = (struct po_chunk *)virt_to_phys(curr);
 			prev = curr;
 			cnt += alloc_size;
+
+			flush_clwb(curr, sizeof(*curr));
+			flush_clwb(prev, sizeof(*prev));
 		}
 	} else {
 		alloc_size = len;
@@ -556,10 +566,16 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 		curr = prev->next_pa == NULL ? NULL : phys_to_virt(prev->next_pa);
 	}
 
+	flush_clwb(new_chunk, sizeof(*new_chunk));
+	_mm_sfence();
 	if (desc->data_pa == NULL) {
 		desc->data_pa = (struct po_chunk *)virt_to_phys(new_chunk);
+		flush_clwb(&(desc->data_pa), sizeof(desc->data_pa));
+		_mm_sfence();
 	} else {
 		prev->next_pa = (struct po_chunk *)virt_to_phys(new_chunk);
+		flush_clwb(&(prev->next_pa), sizeof(prev->next_pa));
+		_mm_sfence();
 	}
 
 	retval = po_prepare_map_chunk(new_chunk, prot, flags | MAP_USE_PM);
@@ -646,6 +662,8 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 	start = get_chunk_map_start(curr);
 	if (addr == start) {
 		desc->data_pa = curr->next_pa;
+		flush_clwb(&(desc->data_pa), sizeof(desc->data_pa));
+		_mm_sfence();
 		goto unmap_and_free_chunk;
 	}
 
@@ -655,6 +673,8 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 		start = get_chunk_map_start(curr);
 		if (addr == start) {
 			prev->next_pa = curr->next_pa;
+			flush_clwb(&(prev->next_pa), sizeof(prev->next_pa));
+			_mm_sfence();
 			goto unmap_and_free_chunk;
 		}
 		prev = curr;
@@ -673,6 +693,8 @@ unmap_and_free_chunk:
 	}
 	po_free_chunk(curr);
 	desc->size -= curr->size;
+	flush_clwb(&(desc->size), sizeof(desc->size));
+	_mm_sfence();
 	spin_unlock_irqrestore(&po_lock, flags);
 	return 0;
 }

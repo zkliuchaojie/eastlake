@@ -50,16 +50,17 @@ void po_super_init(struct po_super *po_super)
 	flush_clwb(po_super->redolog, sizeof(struct po_redolog4del));
 	_mm_sfence();
 
-	flush_clwb(po_super, sizeof(struct po_super));
-	_mm_sfence();
-
 	// init non-continuous address space
-	//TODO: ensure consistency
 	vma = kpmalloc(sizeof(struct po_vma), GFP_KERNEL);
 	vma->start = PO_NON_CONTINUOUS_MAP_AREA_START;
 	vma->size = PO_NON_CONTINUOUS_MAP_SIZE;
 	vma->next_pa = NULL;
+	flush_clwb(vma, sizeof(struct po_vma));
+	_mm_sfence();
+
 	po_super->vma_free_list_pa = virt_to_phys(vma);
+	flush_clwb(po_super, sizeof(struct po_super));
+	_mm_sfence();
 	pr_info("PO_MAP_AREA_START: %#lx, PO_MAP_AREA_END: %#lx",
 		PO_MAP_AREA_START, PO_MAP_AREA_END);
 }
