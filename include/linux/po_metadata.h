@@ -41,8 +41,6 @@ struct po_chunk {
 struct po_desc {
 	unsigned long long size;
 	struct po_chunk *data_pa; //pa means physical address
-	/* tail_pa pointing the last chunk to accelerate po_extend */
-	struct po_chunk *tail_pa;
 	uid_t uid; //user id
 	gid_t gid; //group id
 	umode_t mode;

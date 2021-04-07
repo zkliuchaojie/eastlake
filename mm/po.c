@@ -149,7 +149,6 @@ SYSCALL_DEFINE2(po_creat, const char __user *, poname, umode_t, mode)
 	desc = kpmalloc(sizeof(*desc), GFP_KERNEL);
 	desc->size = 0;
 	desc->data_pa = NULL;
-	desc->tail_pa = NULL;
 	desc->uid = current_uid().val;
 	desc->gid = current_gid().val;
 	desc->mode = mode;
@@ -275,7 +274,6 @@ SYSCALL_DEFINE3(po_open, const char __user *, poname, int, flags, umode_t, mode)
 			desc = kpmalloc(sizeof(*desc), GFP_KERNEL);
 			desc->size = 0;
 			desc->data_pa = NULL;
-			desc->tail_pa = NULL;
 			desc->uid = current_uid().val;
 			desc->gid = current_gid().val;
 			desc->mode = mode;
@@ -551,13 +549,17 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 		new_chunk->next_pa = NULL;
 	}
 
-	if (desc->tail_pa == NULL) {
+	curr = desc->data_pa == NULL ? NULL : (struct po_chunk *)phys_to_virt(desc->data_pa);
+	prev = curr;
+	while (curr != NULL) {
+		prev = curr;
+		curr = prev->next_pa == NULL ? NULL : phys_to_virt(prev->next_pa);
+	}
+
+	if (desc->data_pa == NULL) {
 		desc->data_pa = (struct po_chunk *)virt_to_phys(new_chunk);
-		desc->tail_pa = desc->data_pa;
 	} else {
-		tail_chunk = (struct po_chunk *)phys_to_virt(desc->tail_pa);
-		tail_chunk->next_pa = (struct po_chunk *)virt_to_phys(new_chunk);
-		desc->tail_pa = tail_chunk->next_pa;
+		prev->next_pa = (struct po_chunk *)virt_to_phys(new_chunk);
 	}
 
 	retval = po_prepare_map_chunk(new_chunk, prot, flags | MAP_USE_PM);
@@ -644,8 +646,6 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 	start = get_chunk_map_start(curr);
 	if (addr == start) {
 		desc->data_pa = curr->next_pa;
-		if (desc->data_pa == NULL)
-			desc->tail_pa = NULL;
 		goto unmap_and_free_chunk;
 	}
 
@@ -655,9 +655,6 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 		start = get_chunk_map_start(curr);
 		if (addr == start) {
 			prev->next_pa = curr->next_pa;
-			if (curr == (struct po_chunk *)phys_to_virt(desc->tail_pa)) {
-				desc->tail_pa = (struct po_chunk *)virt_to_phys(prev);
-			}
 			goto unmap_and_free_chunk;
 		}
 		prev = curr;
