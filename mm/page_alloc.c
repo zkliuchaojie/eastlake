@@ -6965,6 +6965,7 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 				_mm_sfence();
 			} else {
 				// we need to recover based on the log
+				recover_from_redolog();
 				if (super->log4alloc.valid) {
 					recover_from_pm_undo(super);
 				} else if (super->log4free.valid) {
