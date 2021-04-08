@@ -74,6 +74,9 @@ inline void extend_memory_with_pmem(void)
 	int result;
 	struct virtual_memory_section *vms;
 
+	if ( vmstate.max_vm_size != 0 && vmstate.vm_size + (1UL << (SECTION_SIZE_BITS)) >= vmstate.max_vm_size)
+		return;
+
 	if (!spin_trylock(&vms_list_lock))
 		return;
 	/* not initialized */
@@ -111,6 +114,8 @@ inline void extend_memory_with_pmem(void)
 		vms_list.number++;
 	}
 
+	vmstate.vm_size = vmstate.vm_size + (1UL << (SECTION_SIZE_BITS));
+
 	spin_unlock(&vms_list_lock);
 }
 
@@ -139,6 +144,8 @@ inline void release_memory_to_pmem(void)
 	list_for_each_entry(vms, &vms_list.list, list) {
 		pr_info("virtual memory section, start: %#018llx", vms->start);
 	}
+
+	vmstate.vm_size = vmstate.vm_size - (1UL << (SECTION_SIZE_BITS));
 
 	spin_unlock(&vms_list_lock);
 }
@@ -179,6 +186,10 @@ static ssize_t max_vm_size_store(struct kobject *kobj,
 	if (err)
 		return err;
 	vmstate.max_vm_size = count;
+
+	while (vmstate.max_vm_size < vmstate.vm_size) {
+		release_memory_to_pmem();
+	}
 
 	return len;
 }
