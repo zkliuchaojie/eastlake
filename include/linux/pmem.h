@@ -26,6 +26,20 @@ extern void extend_memory_with_pmem(void);
 extern void release_memory_to_pmem(void);
 extern int get_virtual_memory_sections_number(void);
 
+/* /sys/kernel/mm/virtual_memory/ */
+/* 0 means the is size of virtual memory is not limited */
+#define DEFAULT_MAX_VM_SIZE	(0UL)
+#define VMSTATE_NAME_LEN 32
+struct vmstate {
+	unsigned long max_vm_size;
+	unsigned long vm_size;
+	char name[VMSTATE_NAME_LEN];
+};
+
+extern struct vmstate vmstate;
+
+
+
 #endif
 
 #endif

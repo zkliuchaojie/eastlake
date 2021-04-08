@@ -46,6 +46,7 @@ SYSCALL_DEFINE0(pmem_init)
 			}
 		}
 	}
+	return 0;
 }
 
 inline unsigned long global_pm_zone_free_pages(void)
@@ -147,3 +148,87 @@ inline int get_virtual_memory_sections_number(void)
 {
 	return vms_list.number;
 }
+
+/* /sys/kernel/mm/virtual_memory/ */
+struct vmstate vmstate;
+static struct kobject *vm_kobj;
+
+#define VMSTATE_ATTR_RO(_name) \
+	static struct kobj_attribute _name##_attr = __ATTR_RO(_name)
+
+#define VMSTATE_ATTR(_name) \
+	static struct kobj_attribute _name##_attr = \
+		__ATTR(_name, 0644, _name##_show, _name##_store)
+
+static ssize_t max_vm_size_show(struct kobject *kobj,
+				       struct kobj_attribute *attr, char *buf)
+{
+	unsigned long max_vm_size;
+
+	max_vm_size = vmstate.max_vm_size;
+	return sprintf(buf, "%lu\n", max_vm_size);
+}
+
+static ssize_t max_vm_size_store(struct kobject *kobj,
+	       struct kobj_attribute *attr, const char *buf, size_t len)
+{
+	unsigned long count;
+	int err;
+
+	err = kstrtoul(buf, 10, &count);
+	if (err)
+		return err;
+	vmstate.max_vm_size = count;
+
+	return len;
+}
+VMSTATE_ATTR(max_vm_size);
+
+static ssize_t vm_size_show(struct kobject *kobj,
+					struct kobj_attribute *attr, char *buf)
+{
+	unsigned long vm_size;
+
+	vm_size = vmstate.vm_size;
+	return sprintf(buf, "%lu\n", vm_size);
+}
+VMSTATE_ATTR_RO(vm_size);
+
+static struct attribute *vmstate_attrs[] = {
+	&max_vm_size_attr.attr,
+	&vm_size_attr.attr,
+	NULL,
+};
+
+static const struct attribute_group vmstate_attr_group = {
+	.attrs = vmstate_attrs,
+};
+
+static void __init vm_sysfs_init(void)
+{
+	int retval;
+
+	vm_kobj = kobject_create_and_add(vmstate.name, mm_kobj);
+	if (!vm_kobj)
+		return;
+
+	retval = sysfs_create_group(vm_kobj, &vmstate_attr_group);
+	if (retval) {
+		pr_err("virtual memory: Unable to add vmstate %s", vmstate.name);
+		kobject_put(vm_kobj);
+	}
+
+	return;
+}
+
+static int __init vm_init(void)
+{
+	vmstate.max_vm_size = DEFAULT_MAX_VM_SIZE;
+	vmstate.vm_size = 0;
+	snprintf(vmstate.name, VMSTATE_NAME_LEN, "virtual_memory");
+
+	vm_sysfs_init();
+
+	return 0;
+}
+subsys_initcall(vm_init);
