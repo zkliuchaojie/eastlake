@@ -61,6 +61,7 @@ void po_super_init(struct po_super *po_super)
 	po_super->vma_free_list_pa = virt_to_phys(vma);
 	flush_clwb(po_super, sizeof(struct po_super));
 	_mm_sfence();
+	pr_info("po_super_init finished\n");
 	pr_info("PO_MAP_AREA_START: %#lx, PO_MAP_AREA_END: %#lx",
 		PO_MAP_AREA_START, PO_MAP_AREA_END);
 }
@@ -464,23 +465,21 @@ void erasure_redolog()
 	flush_clwb(&(ps->redolog->valid), sizeof(int));
 	_mm_sfence();
 }
-void recover_from_redolog()
+void recover_from_redolog(struct po_super *ps)
 {
-	struct po_super *ps;
-	ps = po_get_super();
 	if (ps->redolog->valid == 0)
 		return;
+
+	pr_info("start to recover namespace\n");
 	ps->redolog->cont->cnt_limit = ps->redolog->cnt_limit;
 	if (*(ps->redolog->p) != ps->redolog->predo) {
 		struct po_ns_record *rec_free = *(ps->redolog->p);
 		//original next pointer not update yet
 		*(ps->redolog->p) = ps->redolog->predo;
-		flush_clwb(&(ps->redolog->p), sizeof(struct po_ns_record *));
+		flush_clwb((ps->redolog->p), sizeof(struct po_ns_record *));
 		_mm_sfence();
 		if (rec_free->strlen != NULL)
 			kpfree(rec_free->str);
-		//we free it because system was crashed
-		kpfree(rec_free);
 	}
 	flush_clwb(&(ps->redolog->cont->cnt_limit), sizeof(int));
 	_mm_sfence();

@@ -6953,7 +6953,7 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 				super->log4free.valid = false;
 
 				// init po_super
-				if(e820_range_to_nid(entry->addr) == 0)
+				if(pgdat->node_id == 0)
 					po_super_init(&(super->po_super));
 
 				flush_clwb(super, size + PAGE_SIZE);	// flush all meta
@@ -6965,7 +6965,8 @@ void __init register_zone_pm_emu(pg_data_t *pgdat)
 				_mm_sfence();
 			} else {
 				// we need to recover based on the log
-				recover_from_redolog();
+				if(pgdat->node_id == 0)
+					recover_from_redolog(&(super->po_super));
 				if (super->log4alloc.valid) {
 					recover_from_pm_undo(super);
 				} else if (super->log4free.valid) {

@@ -96,7 +96,7 @@ struct po_ns_record *po_ns_delete_record(struct po_ns_container *container,
 
 void po_super_init(struct po_super *po_super);
 struct po_super *po_get_super(void);
-void recover_from_redolog(void);
+void recover_from_redolog(struct po_super *ps);
 void write_redolog(struct po_ns_record **p, struct po_ns_record *predo,
 		   struct po_ns_container *cont, int cnt_limit);
 void erasure_redolog(void);

@@ -21,7 +21,13 @@ TEST(debugger, simple_test)
 
 	ret = syscall(411, 0);
 	ASSERT_GE(ret, 0);
-	
+
 	ret = syscall(411, 1);
 	ASSERT_GE(ret, 1);
+
+	ret = syscall(411, 2);
+	ASSERT_GE(ret, 2);
+
+	ret = syscall(411, 3);
+	ASSERT_GE(ret, 3);
 }
