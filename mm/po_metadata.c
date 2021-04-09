@@ -393,7 +393,7 @@ struct po_ns_record *po_ns_burst(struct po_ns_trie_node *prev_trie_node,
 			}
 			index = (int)curr_record->str[0];
 			if (new_node->ptrs[index] == NULL) {
-					kpmalloc(sizeof(struct po_ns_container),
+				newcont = kpmalloc(sizeof(struct po_ns_container),
 						 GFP_KERNEL);
 				newcont->cnt_limit = 1;
 				newcont->record_first = new_record;
@@ -484,7 +484,7 @@ void recover_from_redolog()
 	}
 	flush_clwb(&(ps->redolog->cont->cnt_limit), sizeof(int));
 	_mm_sfence();
-	ps->redolog->valid = 1;
+	ps->redolog->valid = 0;
 	flush_clwb(&(ps->redolog->valid), sizeof(int));
 	_mm_sfence();
 	return;
