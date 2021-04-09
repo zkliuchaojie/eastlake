@@ -1,4 +1,5 @@
 /*
+ * pod: persistent object describle table.
  * Author: liuchaojie
  */
 
@@ -16,14 +17,11 @@
 /*
  * Persistent Objects Structure
  * Used in task_struct likes files_struct.
- * As you seen, the implementation of pos_struct is
- * very simple, in which the number of po is fixed
- * and tranversing po_array to find empty slots, and
- * we will enhance it.
  */
 struct pos_struct {
 	atomic_t count;
-	struct po_desc *po_array[NR_OPEN_DEFAULT];
+	int size;		// the size of po_array
+	struct po_desc **po_array;
 };
 
 /*
@@ -39,5 +37,7 @@ int pos_insert(struct po_desc *pod);
 int pos_delete(unsigned int pod);
 
 bool pos_is_open(struct po_desc *pod);
+
+struct po_desc *pos_get(unsigned int pod);
 
 #endif

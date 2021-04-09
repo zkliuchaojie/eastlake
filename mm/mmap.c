@@ -2912,7 +2912,7 @@ long po_unmap_chunk(unsigned long start)
         struct mmu_gather tlb;
 
         vma = find_vma(mm, start);
-        if (!vma)
+        if (!vma || vma->vm_start != start)
                 return 0;
 
         prev = vma->vm_prev;

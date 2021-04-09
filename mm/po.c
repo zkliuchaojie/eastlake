@@ -30,85 +30,6 @@ void po_free_chunk(struct po_chunk *chunk);
 void po_free_nc_chunk(struct po_chunk *nc_map_metadata);
 
 /*
- * Functions about podtable.h
- */
-
-inline int pos_insert(struct po_desc *desc)
-{
-	int i;
-	struct po_desc **po_array;
-
-	po_array = current->pos->po_array;
-	for (i = 0; i < NR_OPEN_DEFAULT; i++) {
-		if (po_array[i] == NULL) {
-			po_array[i] = desc;
-			return i;
-		}
-	}
-	return -EMFILE;
-}
-
-inline struct po_desc *pos_get(unsigned int pod)
-{
-	struct po_desc **po_array;
-
-	if (pod < 0 || pod >= NR_OPEN_DEFAULT)
-		return NULL;
-
-	po_array = current->pos->po_array;
-	if (po_array[pod] == NULL)
-		return NULL;
-	return po_array[pod];
-}
-
-inline int pos_delete(unsigned int pod)
-{
-	struct po_desc **po_array;
-
-	if (pod < 0 || pod >= NR_OPEN_DEFAULT)
-		return -EBADF;
-
-	po_array = current->pos->po_array;
-	if (po_array[pod] == NULL)
-		return -EBADF;
-	po_array[pod] = NULL;
-	return 0;
-}
-
-inline bool pos_is_open(struct po_desc *desc)
-{
-	int i;
-	struct po_desc **po_array;
-
-	po_array = current->pos->po_array;
-	for (i = 0; i < NR_OPEN_DEFAULT; i++) {
-		if (po_array[i] == desc)
-			return true;
-	}
-	return false;
-}
-
-struct pos_struct init_pos = {
-	.count		= ATOMIC_INIT(1),
-	.po_array	= {0},
-};
-
-void exit_pos(struct task_struct *tsk)
-{
-	struct pos_struct *pos = tsk->pos;
-
-	if (pos) {
-		tsk->pos = NULL;
-		if (atomic_dec_and_test(&pos->count))
-			kfree(pos);
-	}
-}
-
-/*
- * TODO: check if mode and flags are legal.
- */
-
-/*
  * For now, we didn't consider the parameter of mode.
  */
 SYSCALL_DEFINE2(po_creat, const char __user *, poname, umode_t, mode)
@@ -155,6 +76,7 @@ SYSCALL_DEFINE2(po_creat, const char __user *, poname, umode_t, mode)
 	desc->flags = O_CREAT|O_RDWR;
 	flush_clwb(desc, sizeof(*desc));
 	_mm_sfence();
+
 	rcd->desc = (struct po_desc *)virt_to_phys(desc);
 	flush_clwb(&(rcd->desc), sizeof(rcd->desc));
 	_mm_sfence();
