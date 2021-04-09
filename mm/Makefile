@@ -46,6 +46,7 @@ obj-y += po.o
 obj-y += po_metadata.o
 obj-y += po_map.o
 obj-y += pmem.o
+obj-y += podtable.o
 
 ifdef CONFIG_NO_BOOTMEM
 	obj-y		+= nobootmem.o
