@@ -291,10 +291,10 @@ TEST(po_extend, numa_aware_and_hugepage_simple_test)
 	pod1 = syscall(400, poname);
 	ASSERT_GE(pod1, 0);
 
-	c = (char *)syscall(406, pod1, MAX_BUDDY_ALLOC_SIZE*64, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_NUMA_AWARE | MAP_HUGETLB);
+	c = (char *)syscall(406, pod1, MAX_BUDDY_ALLOC_SIZE*4, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_NUMA_AWARE | MAP_HUGETLB);
 	ASSERT_GE((unsigned long)c, 0);
 	c[0] = 'a';
-	for (i=0; i<MAX_BUDDY_ALLOC_SIZE*64; i++) {
+	for (i=0; i<MAX_BUDDY_ALLOC_SIZE*4; i++) {
 		c[i] = i;
 	}
 	//printf("%c\n", c[0]);
