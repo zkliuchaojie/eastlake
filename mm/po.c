@@ -19,7 +19,7 @@
 #include <linux/pmalloc.h>
 #include <linux/mm.h>
 #include <linux/string.h>
-
+#include <linux/pflush.h>
 
 /*
  * protect syscalls of persistent object.
@@ -28,85 +28,6 @@ DEFINE_SPINLOCK(po_lock);
 
 void po_free_chunk(struct po_chunk *chunk);
 void po_free_nc_chunk(struct po_chunk *nc_map_metadata);
-
-/*
- * Functions about podtable.h
- */
-
-inline int pos_insert(struct po_desc *desc)
-{
-	int i;
-	struct po_desc **po_array;
-
-	po_array = current->pos->po_array;
-	for (i = 0; i < NR_OPEN_DEFAULT; i++) {
-		if (po_array[i] == NULL) {
-			po_array[i] = desc;
-			return i;
-		}
-	}
-	return -EMFILE;
-}
-
-inline struct po_desc *pos_get(unsigned int pod)
-{
-	struct po_desc **po_array;
-
-	if (pod < 0 || pod >= NR_OPEN_DEFAULT)
-		return NULL;
-
-	po_array = current->pos->po_array;
-	if (po_array[pod] == NULL)
-		return NULL;
-	return po_array[pod];
-}
-
-inline int pos_delete(unsigned int pod)
-{
-	struct po_desc **po_array;
-
-	if (pod < 0 || pod >= NR_OPEN_DEFAULT)
-		return -EBADF;
-
-	po_array = current->pos->po_array;
-	if (po_array[pod] == NULL)
-		return -EBADF;
-	po_array[pod] = NULL;
-	return 0;
-}
-
-inline bool pos_is_open(struct po_desc *desc)
-{
-	int i;
-	struct po_desc **po_array;
-
-	po_array = current->pos->po_array;
-	for (i = 0; i < NR_OPEN_DEFAULT; i++) {
-		if (po_array[i] == desc)
-			return true;
-	}
-	return false;
-}
-
-struct pos_struct init_pos = {
-	.count		= ATOMIC_INIT(1),
-	.po_array	= {0},
-};
-
-void exit_pos(struct task_struct *tsk)
-{
-	struct pos_struct *pos = tsk->pos;
-
-	if (pos) {
-		tsk->pos = NULL;
-		if (atomic_dec_and_test(&pos->count))
-			kfree(pos);
-	}
-}
-
-/*
- * TODO: check if mode and flags are legal.
- */
 
 /*
  * For now, we didn't consider the parameter of mode.
@@ -149,13 +70,16 @@ SYSCALL_DEFINE2(po_creat, const char __user *, poname, umode_t, mode)
 	desc = kpmalloc(sizeof(*desc), GFP_KERNEL);
 	desc->size = 0;
 	desc->data_pa = NULL;
-	desc->tail_pa = NULL;
 	desc->uid = current_uid().val;
 	desc->gid = current_gid().val;
 	desc->mode = mode;
 	desc->flags = O_CREAT|O_RDWR;
-	rcd->desc = (struct po_desc *)virt_to_phys(desc);
+	flush_clwb(desc, sizeof(*desc));
+	_mm_sfence();
 
+	rcd->desc = (struct po_desc *)virt_to_phys(desc);
+	flush_clwb(&(rcd->desc), sizeof(rcd->desc));
+	_mm_sfence();
 
 	retval = pos_insert(desc);
 	if (retval < 0) {
@@ -275,12 +199,15 @@ SYSCALL_DEFINE3(po_open, const char __user *, poname, int, flags, umode_t, mode)
 			desc = kpmalloc(sizeof(*desc), GFP_KERNEL);
 			desc->size = 0;
 			desc->data_pa = NULL;
-			desc->tail_pa = NULL;
 			desc->uid = current_uid().val;
 			desc->gid = current_gid().val;
 			desc->mode = mode;
 			desc->flags = flags;
+			flush_clwb(desc, sizeof(*desc));
+			_mm_sfence();
 			rcd->desc = (struct po_desc *)virt_to_phys(desc);
+			flush_clwb(&(rcd->desc), sizeof(rcd->desc));
+			_mm_sfence();
 		} else {
 			kfree(kponame);
 			spin_unlock_irqrestore(&po_lock, irq_flags);
@@ -535,6 +462,9 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 			prev->next_pa = (struct po_chunk *)virt_to_phys(curr);
 			prev = curr;
 			cnt += alloc_size;
+
+			flush_clwb(curr, sizeof(*curr));
+			flush_clwb(prev, sizeof(*prev));
 		}
 	} else {
 		alloc_size = len;
@@ -551,13 +481,23 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 		new_chunk->next_pa = NULL;
 	}
 
-	if (desc->tail_pa == NULL) {
+	curr = desc->data_pa == NULL ? NULL : (struct po_chunk *)phys_to_virt(desc->data_pa);
+	prev = curr;
+	while (curr != NULL) {
+		prev = curr;
+		curr = prev->next_pa == NULL ? NULL : phys_to_virt(prev->next_pa);
+	}
+
+	flush_clwb(new_chunk, sizeof(*new_chunk));
+	_mm_sfence();
+	if (desc->data_pa == NULL) {
 		desc->data_pa = (struct po_chunk *)virt_to_phys(new_chunk);
-		desc->tail_pa = desc->data_pa;
+		flush_clwb(&(desc->data_pa), sizeof(desc->data_pa));
+		_mm_sfence();
 	} else {
-		tail_chunk = (struct po_chunk *)phys_to_virt(desc->tail_pa);
-		tail_chunk->next_pa = (struct po_chunk *)virt_to_phys(new_chunk);
-		desc->tail_pa = tail_chunk->next_pa;
+		prev->next_pa = (struct po_chunk *)virt_to_phys(new_chunk);
+		flush_clwb(&(prev->next_pa), sizeof(prev->next_pa));
+		_mm_sfence();
 	}
 
 	retval = po_prepare_map_chunk(new_chunk, prot, flags | MAP_USE_PM);
@@ -644,8 +584,8 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 	start = get_chunk_map_start(curr);
 	if (addr == start) {
 		desc->data_pa = curr->next_pa;
-		if (desc->data_pa == NULL)
-			desc->tail_pa = NULL;
+		flush_clwb(&(desc->data_pa), sizeof(desc->data_pa));
+		_mm_sfence();
 		goto unmap_and_free_chunk;
 	}
 
@@ -655,9 +595,8 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 		start = get_chunk_map_start(curr);
 		if (addr == start) {
 			prev->next_pa = curr->next_pa;
-			if (curr == (struct po_chunk *)phys_to_virt(desc->tail_pa)) {
-				desc->tail_pa = (struct po_chunk *)virt_to_phys(prev);
-			}
+			flush_clwb(&(prev->next_pa), sizeof(prev->next_pa));
+			_mm_sfence();
 			goto unmap_and_free_chunk;
 		}
 		prev = curr;
@@ -676,6 +615,8 @@ unmap_and_free_chunk:
 	}
 	po_free_chunk(curr);
 	desc->size -= curr->size;
+	flush_clwb(&(desc->size), sizeof(desc->size));
+	_mm_sfence();
 	spin_unlock_irqrestore(&po_lock, flags);
 	return 0;
 }

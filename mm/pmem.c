@@ -11,6 +11,7 @@
 #include <asm/sparsemem.h>
 #include <linux/spinlock.h>
 #include <linux/slab.h>
+#include <linux/po_metadata.h>
 
 DEFINE_SPINLOCK(vms_list_lock);
 static struct virtual_memory_sections vms_list = {
@@ -26,6 +27,8 @@ SYSCALL_DEFINE1(debugger, unsigned int, op)
 		extend_memory_with_pmem();
 	} else if (op == 2) {
 		release_memory_to_pmem();
+	} else if (op == 3) {
+		recover_from_redolog(po_get_super());
 	}
 
 	return op;

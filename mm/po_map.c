@@ -1,6 +1,7 @@
 #include <linux/po_metadata.h>
 #include <linux/po_map.h>
 #include <linux/pmalloc.h>
+#include <linux/pflush.h>
 
 static unsigned long align_up(unsigned long val, unsigned long align_size)
 {
@@ -38,6 +39,8 @@ struct po_vma *po_vma_alloc(size_t len, unsigned long align_size)
 	if (curr_vma == phys_to_virt(super->vma_free_list_pa)) {
 		if (is_aligned(curr_vma->start, align_size) && curr_vma->size == len) {
 			super->vma_free_list_pa = curr_vma->next_pa;
+			flush_clwb(&(super->vma_free_list_pa), sizeof(super->vma_free_list_pa));
+			_mm_sfence();
 			return curr_vma;
 		} else {
 			if (is_aligned(curr_vma->start, align_size)) {
@@ -45,7 +48,13 @@ struct po_vma *po_vma_alloc(size_t len, unsigned long align_size)
 				new_vma->start = curr_vma->start + len;
 				new_vma->size = curr_vma->size - len;
 				new_vma->next_pa = curr_vma->next_pa;
+				flush_clwb(new_vma, sizeof(*new_vma));
+				_mm_sfence();
+
 				super->vma_free_list_pa = virt_to_phys(new_vma);
+				flush_clwb(&(super->vma_free_list_pa), sizeof(super->vma_free_list_pa));
+				_mm_sfence();
+
 				curr_vma->size = len;
 				return curr_vma;
 			} else {
@@ -58,7 +67,14 @@ struct po_vma *po_vma_alloc(size_t len, unsigned long align_size)
 				new_vma1->start = align_up(curr_vma->start, align_size) + len;
 				new_vma1->size = curr_vma->size - new_vma1->size - len;
 				new_vma1->next_pa = curr_vma->next_pa;
+
+				flush_clwb(new_vma, sizeof(*new_vma));
+				flush_clwb(new_vma1, sizeof(*new_vma1));
+				_mm_sfence();
+
 				super->vma_free_list_pa = virt_to_phys(new_vma);
+				flush_clwb(&(super->vma_free_list_pa), sizeof(super->vma_free_list_pa));
+				_mm_sfence();
 
 				curr_vma->start = align_up(curr_vma->start, align_size);
 				curr_vma->size = len;
@@ -68,6 +84,8 @@ struct po_vma *po_vma_alloc(size_t len, unsigned long align_size)
 	} else {
 		if (is_aligned(curr_vma->start, align_size) && curr_vma->size == len) {
 			prev_vma->next_pa = curr_vma->next_pa;
+			flush_clwb(&(prev_vma->next_pa), sizeof(prev_vma->next_pa));
+			_mm_sfence();
 			return curr_vma;
 		} else {
 			if (is_aligned(curr_vma->start, align_size)) {
@@ -75,7 +93,13 @@ struct po_vma *po_vma_alloc(size_t len, unsigned long align_size)
 				new_vma->start = curr_vma->start + len;
 				new_vma->size = curr_vma->size - len;
 				new_vma->next_pa = curr_vma->next_pa;
+				flush_clwb(new_vma, sizeof(*new_vma));
+				_mm_sfence();
+
 				prev_vma->next_pa = virt_to_phys(new_vma);
+				flush_clwb(&(prev_vma->next_pa), sizeof(prev_vma->next_pa));
+				_mm_sfence();
+
 				curr_vma->size = len;
 				return curr_vma;
 			} else {
@@ -88,7 +112,13 @@ struct po_vma *po_vma_alloc(size_t len, unsigned long align_size)
 				new_vma1->start = align_up(curr_vma->start, align_size) + len;
 				new_vma1->size = curr_vma->size - new_vma1->size - len;
 				new_vma1->next_pa = curr_vma->next_pa;
+				flush_clwb(new_vma, sizeof(*new_vma));
+				flush_clwb(new_vma1, sizeof(*new_vma1));
+				_mm_sfence();
+
 				prev_vma->next_pa = virt_to_phys(new_vma);
+				flush_clwb(&(prev_vma->next_pa), sizeof(prev_vma->next_pa));
+				_mm_sfence();
 
 				curr_vma->start = align_up(curr_vma->start, align_size);
 				curr_vma->size = len;

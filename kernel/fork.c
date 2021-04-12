@@ -1396,7 +1396,8 @@ static int copy_pos(unsigned long clone_flags, struct task_struct *tsk)
 	if (!newp)
 		goto out;
 	atomic_set(&newp->count, 1);
-	memset(newp->po_array, 0, NR_OPEN_DEFAULT * sizeof(struct po_desc *));
+	newp->size = 0;
+	newp->po_array = NULL;
 
 	tsk->pos = newp;
 	error = 0;
