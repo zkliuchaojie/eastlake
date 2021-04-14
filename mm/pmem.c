@@ -254,6 +254,47 @@ subsys_initcall(vm_init);
 
 /* hybrid memory migration(hmm)*/
 
+/*
+ * Decide whether we should migrate memory between DRAM and PM.
+ */
+static bool should_migrate_hybrid_pages(pg_data_t *pgdat)
+{
+	unsigned long vm_size;
+
+	vm_size = vmstate.vm_size;
+	if (vm_size == 0)
+		return false;
+	return true;
+}
+
+static void migrate_active_lru_list(pg_data_t *pgdat, enum lru_list lru)
+{
+
+}
+
+static void migrate_active_list(pg_data_t *pgdat)
+{
+	enum lru_list lru;
+
+	for_each_lru(lru)
+		if (is_active_lru(lru))
+			migrate_active_lru_list(pgdat, lru);
+}
+
+static void migrate_inactive_lru_list(pg_data_t *pgdat, enum lru_list lru)
+{
+
+}
+
+static void migrate_inactive_list(pg_data_t *pgdat)
+{
+	enum lru_list lru;
+
+	for_each_lru(lru)
+		if (is_inactive_lru(lru))
+			migrate_inactive_lru_list(pgdat, lru);
+}
+
 static int khmmd(void *p)
 {
 	pg_data_t *pgdat = (pg_data_t*)p;
@@ -264,6 +305,12 @@ static int khmmd(void *p)
 		set_current_state(TASK_UNINTERRUPTIBLE);
         if(kthread_should_stop())
 			break;
+
+		if (should_migrate_hybrid_pages(pgdat)) {
+			migrate_active_list(pgdat);
+			migrate_inactive_list(pgdat);
+		}
+
 		schedule_timeout(HZ);	/* Timeout after 1 second */
 	}
 
