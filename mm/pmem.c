@@ -18,6 +18,8 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 
+#include <linux/swap.h>
+
 DEFINE_SPINLOCK(vms_list_lock);
 static struct virtual_memory_sections vms_list = {
 	.number = -1,
@@ -267,11 +269,6 @@ static bool should_migrate_hybrid_pages(pg_data_t *pgdat)
 	return true;
 }
 
-static void migrate_active_lru_list(pg_data_t *pgdat, enum lru_list lru)
-{
-
-}
-
 static void migrate_active_list(pg_data_t *pgdat)
 {
 	enum lru_list lru;
@@ -279,11 +276,6 @@ static void migrate_active_list(pg_data_t *pgdat)
 	for_each_lru(lru)
 		if (is_active_lru(lru))
 			migrate_active_lru_list(pgdat, lru);
-}
-
-static void migrate_inactive_lru_list(pg_data_t *pgdat, enum lru_list lru)
-{
-
 }
 
 static void migrate_inactive_list(pg_data_t *pgdat)
