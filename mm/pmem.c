@@ -293,7 +293,7 @@ static int khmmd(void *p)
 	struct task_struct *tsk = current;
 
 	for ( ; ; ) {
-		pr_info("khmmd\n");
+		// pr_info("khmmd\n");
 		set_current_state(TASK_UNINTERRUPTIBLE);
         if(kthread_should_stop())
 			break;
@@ -303,7 +303,7 @@ static int khmmd(void *p)
 			migrate_inactive_list(pgdat);
 		}
 
-		schedule_timeout(HZ);	/* Timeout after 1 second */
+		schedule_timeout(HZ/100);	/* Timeout after 1 second */
 	}
 
 	return 0;

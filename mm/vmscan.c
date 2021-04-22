@@ -4256,8 +4256,16 @@ static struct page* alloc_promote_page(struct page *page, unsigned long node)
 	gfp_t gfp = GFP_KERNEL;
 	if (unlikely(PageHuge(page)))
 		BUG();
-	else if (PageTransHuge(page))
-		BUG();
+	else if (PageTransHuge(page)) {
+		struct page *thp;
+
+		thp = alloc_pages_node(node, (GFP_TRANSHUGE | __GFP_THISNODE | gfp),
+				       HPAGE_PMD_ORDER);
+		if (!thp)
+			return NULL;
+		prep_transhuge_page(thp);
+		return thp;
+	}
 	else {
 		return __alloc_pages_node(node, gfp, 0);	// Todo alloc_from_DRAM
 	}	
@@ -4271,15 +4279,19 @@ void migrate_active_lru_list(pg_data_t *pgdat, enum lru_list lru)
 {	
 	unsigned long scan_page_num = 1024;
 
-	struct lruvec *lruvec = &(pgdat->lruvec);
-	struct list_head *src = &(lruvec->lists[lru]);
+	struct mem_cgroup* root = root_mem_cgroup;
+	struct lruvec *lruvec = mem_cgroup_lruvec(pgdat, root);
+	struct zone_reclaim_stat *reclaim_stat = &lruvec->reclaim_stat;
+	// struct list_head *src = &(lruvec->lists[lru]);
 	isolate_mode_t isolate_mode = 0;
+	int file = is_file_lru(lru);
 	LIST_HEAD(l_hold);
 	LIST_HEAD(l_active);
 	LIST_HEAD(l_inactive);
 	LIST_HEAD(promote_pages);
 	struct page *page;
-	unsigned long scan, nr_pages, nr_scanned, nr_rotated;
+	unsigned long nr_scanned, nr_rotated = 0;
+	unsigned nr_deactivate, nr_activate;
 	unsigned long vm_flags;
 	unsigned long nr_taken = 0;
 
@@ -4289,6 +4301,12 @@ void migrate_active_lru_list(pg_data_t *pgdat, enum lru_list lru)
 
 	spin_lock_irq(&pgdat->lru_lock);
 	nr_taken = isolate_migrate_pages(scan_page_num, lruvec, &l_hold, &nr_scanned, isolate_mode, lru);
+	__mod_node_page_state(pgdat, NR_ISOLATED_ANON + file, nr_taken);
+	reclaim_stat->recent_scanned[file] += nr_taken;
+
+	__count_vm_events(PGREFILL, nr_scanned);
+	count_memcg_events(lruvec_memcg(lruvec), PGREFILL, nr_scanned);
+
 	spin_unlock_irq(&pgdat->lru_lock);
 
 	while (!list_empty(&l_hold)) {
@@ -4327,20 +4345,23 @@ void migrate_active_lru_list(pg_data_t *pgdat, enum lru_list lru)
 	
 	if (!list_empty(&promote_pages)) {
 		int err;
-		pr_info("migrate_active_lru_list lru %d promote", lru);
+		// pr_info("migrate_active_lru_list lru %d promote", lru);
 		err = migrate_pages(&promote_pages, alloc_promote_page, NULL,
 							pgdat->node_id, MIGRATE_ASYNC, MR_PROMOTE);
 		if (err) {
 			putback_movable_pages(&promote_pages);
 
 			list_splice(&promote_pages, &l_active);
-			pr_info("migrate_active_lru_list lru %d promote err %d", lru, err);
+			// pr_info("migrate_active_lru_list lru %d promote err %d", lru, err);
 		}
 	}
 
 	spin_lock_irq(&pgdat->lru_lock);
-	move_active_pages_to_lru(lruvec, &l_active, &l_hold, lru);
-	move_active_pages_to_lru(lruvec, &l_inactive, &l_hold, lru - LRU_ACTIVE);
+	reclaim_stat->recent_rotated[file] += nr_rotated;
+
+	nr_activate = move_active_pages_to_lru(lruvec, &l_active, &l_hold, lru);
+	nr_deactivate = move_active_pages_to_lru(lruvec, &l_inactive, &l_hold, lru - LRU_ACTIVE);
+	__mod_node_page_state(pgdat, NR_ISOLATED_ANON + file, -nr_taken);
 	spin_unlock_irq(&pgdat->lru_lock);
 
 	// l_hold may be always empty?
@@ -4353,20 +4374,30 @@ static struct page* alloc_demote_page(struct page *page, unsigned long node)
 	gfp_t gfp = __GFP_MOVABLE | GFP_KERNEL;
 	if (unlikely(PageHuge(page)))
 		BUG();
-	else if (PageTransHuge(page))
-		BUG();
+	else if (PageTransHuge(page)) {
+		struct page *thp;
+
+		thp = alloc_pages_node(node, (GFP_TRANSHUGE | __GFP_THISNODE | gfp),
+				       HPAGE_PMD_ORDER);
+		if (!thp)
+			return NULL;
+		prep_transhuge_page(thp);
+		return thp;
+	}
 	else
 		return __alloc_pages_node(node, gfp, 0);	// Todo alloc_from_pm
 }
 
 // refer to shrink_page_list
-static unsigned long migrate_to_pmem(struct list_head *page_list,
-						struct pglist_data *pgdat, enum lru_list lru)
+static void migrate_to_pmem(struct list_head *page_list,
+						struct pglist_data *pgdat, struct lruvec* lruvec,
+						enum lru_list lru, unsigned long nr_taken)
 {
 	LIST_HEAD(ret_pages);
 	LIST_HEAD(demote_pages);
 	LIST_HEAD(promote_pages);
 	unsigned long vm_flags;
+	int file = is_file_lru(lru);
 
 	while (!list_empty(page_list)) {
 		struct page *page;
@@ -4426,7 +4457,7 @@ keep:
 
 	if (!list_empty(&promote_pages)) {
 		int err;
-		pr_info("migrate_to_pmem lru %d promote", lru);
+		// pr_info("migrate_to_pmem lru %d promote", lru);
 		err = migrate_pages(&promote_pages, alloc_promote_page, NULL,
 							pgdat->node_id, MIGRATE_ASYNC, MR_PROMOTE);
 
@@ -4434,13 +4465,13 @@ keep:
 			putback_movable_pages(&promote_pages);
 
 			list_splice(&promote_pages, &ret_pages);
-			pr_info("migrate_to_pmem lru %d promote err %d", lru, err);
+			// pr_info("migrate_to_pmem lru %d promote err %d", lru, err);
 		}
 	}
 
 	if (!list_empty(&demote_pages)) {
 		int err;
-		pr_info("migrate_to_pmem lru %d demote", lru);
+		// pr_info("migrate_to_pmem lru %d demote", lru);
 		err = migrate_pages(&demote_pages, alloc_demote_page, NULL,
 							pgdat->node_id, MIGRATE_ASYNC, MR_DEMOTE);
 		
@@ -4448,14 +4479,16 @@ keep:
 			putback_movable_pages(&demote_pages);
 
 			list_splice(&demote_pages, &ret_pages);
-			pr_info("migrate_to_pmem lru %d demote err %d", lru, err);
+			// pr_info("migrate_to_pmem lru %d demote err %d", lru, err);
 		}
 	}
 
 	list_splice(&ret_pages, page_list);
 
 	spin_lock_irq(&pgdat->lru_lock);
-	putback_inactive_pages(&pgdat->lruvec, page_list);
+	putback_inactive_pages(lruvec, page_list);
+
+	__mod_node_page_state(pgdat, NR_ISOLATED_ANON + file, -nr_taken);
 	spin_unlock_irq(&pgdat->lru_lock);
 
 	mem_cgroup_uncharge_list(page_list);
@@ -4469,22 +4502,27 @@ void migrate_inactive_lru_list(pg_data_t *pgdat, enum lru_list lru)
 
 	LIST_HEAD(page_list);
 	unsigned long nr_scanned;
-	unsigned long nr_reclaimed = 0;
+	// unsigned long nr_reclaimed = 0;
 	unsigned long nr_taken;
 	isolate_mode_t isolate_mode = 0;
-	struct lruvec *lruvec = &pgdat->lruvec;
+	struct mem_cgroup* root = root_mem_cgroup;
+	int file = is_file_lru(lru);
+	struct lruvec *lruvec = mem_cgroup_lruvec(pgdat, root);
+	struct zone_reclaim_stat *reclaim_stat = &lruvec->reclaim_stat;
 
 	lru_add_drain();
 	isolate_mode |= ISOLATE_UNMAPPED;
 
 	spin_lock_irq(&pgdat->lru_lock);
 	nr_taken = isolate_migrate_pages(scan_page_num, lruvec, &page_list, &nr_scanned, isolate_mode, lru);
+	__mod_node_page_state(pgdat, NR_ISOLATED_ANON + file, nr_taken);
+	reclaim_stat->recent_scanned[file] += nr_taken;
 	spin_unlock_irq(&pgdat->lru_lock);
 
 	if (nr_taken == 0)
 		return;
 
-	migrate_to_pmem(&page_list, pgdat, lru);
+	migrate_to_pmem(&page_list, pgdat, lruvec, lru, nr_taken);
 
 }
 #endif
