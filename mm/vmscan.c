@@ -4253,7 +4253,7 @@ static unsigned long isolate_migrate_pages(unsigned long nr_to_scan,
 
 static struct page* alloc_promote_page(struct page *page, unsigned long node) 
 {
-	gfp_t gfp = GFP_KERNEL;
+	gfp_t gfp = GFP_HIGHUSER;
 	if (unlikely(PageHuge(page)))
 		BUG();
 	else if (PageTransHuge(page)) {
@@ -4272,7 +4272,7 @@ static struct page* alloc_promote_page(struct page *page, unsigned long node)
 }
 
 /*
- * we only sacn fixed pages
+ * we only scan fixed pages
  * refer to shrink_active_list
  */
 void migrate_active_lru_list(pg_data_t *pgdat, enum lru_list lru)
@@ -4371,7 +4371,7 @@ void migrate_active_lru_list(pg_data_t *pgdat, enum lru_list lru)
 
 static struct page* alloc_demote_page(struct page *page, unsigned long node) 
 {
-	gfp_t gfp = __GFP_MOVABLE | GFP_KERNEL;
+	gfp_t gfp = GFP_HIGHUSER_MOVABLE;
 	if (unlikely(PageHuge(page)))
 		BUG();
 	else if (PageTransHuge(page)) {
