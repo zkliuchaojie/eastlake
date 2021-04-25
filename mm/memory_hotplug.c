@@ -36,6 +36,7 @@
 #include <linux/bootmem.h>
 #include <linux/compaction.h>
 #include <linux/rmap.h>
+#include <linux/pmem.h>
 
 #include <asm/tlbflush.h>
 
@@ -952,6 +953,9 @@ int __ref online_pages(unsigned long pfn, unsigned long nr_pages, int online_typ
 	if (onlined_pages) {
 		kswapd_run(nid);
 		kcompactd_run(nid);
+#ifdef CONFIG_ZONE_PM_EMU
+		khmmd_run(nid);
+#endif
 	}
 
 	vm_total_pages = nr_free_pagecache_pages();

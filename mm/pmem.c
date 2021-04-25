@@ -12,6 +12,13 @@
 #include <linux/spinlock.h>
 #include <linux/slab.h>
 #include <linux/po_metadata.h>
+#include <asm-generic/bug.h>
+#include <linux/sched.h>
+#include <linux/kthread.h>
+#include <linux/kernel.h>
+#include <linux/init.h>
+
+#include <linux/swap.h>
 
 DEFINE_SPINLOCK(vms_list_lock);
 static struct virtual_memory_sections vms_list = {
@@ -246,3 +253,105 @@ static int __init vm_init(void)
 	return 0;
 }
 subsys_initcall(vm_init);
+
+/* hybrid memory migration(hmm)*/
+
+/*
+ * Decide whether we should migrate memory between DRAM and PM.
+ */
+static bool should_migrate_hybrid_pages(pg_data_t *pgdat)
+{
+	unsigned long vm_size;
+
+	vm_size = vmstate.vm_size;
+	if (vm_size == 0)
+		return false;
+	return true;
+}
+
+static void migrate_active_list(pg_data_t *pgdat)
+{
+	enum lru_list lru;
+
+	for_each_lru(lru)
+		if (is_active_lru(lru))
+			migrate_active_lru_list(pgdat, lru);
+}
+
+static void migrate_inactive_list(pg_data_t *pgdat)
+{
+	enum lru_list lru;
+
+	for_each_lru(lru)
+		if (is_inactive_lru(lru))
+			migrate_inactive_lru_list(pgdat, lru);
+}
+
+static int khmmd(void *p)
+{
+	pg_data_t *pgdat = (pg_data_t*)p;
+	struct task_struct *tsk = current;
+
+	for ( ; ; ) {
+		// pr_info("khmmd\n");
+		set_current_state(TASK_UNINTERRUPTIBLE);
+        if(kthread_should_stop())
+			break;
+
+		if (should_migrate_hybrid_pages(pgdat)) {
+			migrate_active_list(pgdat);
+			migrate_inactive_list(pgdat);
+		}
+
+		schedule_timeout(HZ/100);	/* Timeout after 1 second */
+	}
+
+	return 0;
+}
+
+/*
+ * This kswapd start function will be called by init and node-hot-add.
+ */
+int khmmd_run(int nid)
+{
+	pg_data_t *pgdat = NODE_DATA(nid);
+	int ret = 0;
+
+	if (pgdat->khmmd)
+		return 0;
+
+	pgdat->khmmd = kthread_run(khmmd, pgdat, "khmmd%d", nid);
+	if (IS_ERR(pgdat->khmmd)) {
+		/* failure at boot is fatal */
+		BUG_ON(system_state < SYSTEM_RUNNING);
+		pr_err("Failed to start khmmd on node %d\n", nid);
+		ret = PTR_ERR(pgdat->khmmd);
+		pgdat->khmmd = NULL;
+	}
+	return ret;
+}
+
+/*
+ * for now, khmmd_stop is never used.
+ */
+void khmmd_stop(int nid)
+{
+	struct task_struct *khmmd = NODE_DATA(nid)->khmmd;
+
+	if (khmmd) {
+		kthread_stop(khmmd);
+		NODE_DATA(nid)->khmmd = NULL;
+	}
+}
+
+static int __init khmmd_init(void)
+{
+	int nid;
+
+	for_each_node_state(nid, N_MEMORY)
+		khmmd_run(nid);
+
+	return 0;
+}
+
+late_initcall(khmmd_init)

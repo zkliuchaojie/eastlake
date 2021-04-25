@@ -38,7 +38,9 @@ struct vmstate {
 
 extern struct vmstate vmstate;
 
-
+/* hybrid memory migrationd(hmm)*/
+int khmmd_run(int nid);
+void khmmd_stop(int nid);
 
 #endif
 

@@ -387,6 +387,11 @@ extern void check_move_unevictable_pages(struct page **, int nr_pages);
 extern int kswapd_run(int nid);
 extern void kswapd_stop(int nid);
 
+#ifdef CONFIG_ZONE_PM_EMU
+extern void migrate_active_lru_list(pg_data_t *pgdat, enum lru_list lru);
+extern void migrate_inactive_lru_list(pg_data_t *pgdat, enum lru_list lru);
+#endif
+
 #ifdef CONFIG_SWAP
 
 #include <linux/blk_types.h> /* for bio_end_io_t */

@@ -228,6 +228,11 @@ static inline int is_active_lru(enum lru_list lru)
 	return (lru == LRU_ACTIVE_ANON || lru == LRU_ACTIVE_FILE);
 }
 
+static inline int is_inactive_lru(enum lru_list lru)
+{
+	return (lru == LRU_INACTIVE_ANON || lru == LRU_INACTIVE_FILE);
+}
+
 struct zone_reclaim_stat {
 	/*
 	 * The pageout code in vmscan.c keeps track of how many of the
@@ -774,6 +779,10 @@ typedef struct pglist_data {
 	enum zone_type kswapd_classzone_idx;
 
 	int kswapd_failures;		/* Number of 'reclaimed == 0' runs */
+
+#ifdef CONFIG_ZONE_PM_EMU
+	struct task_struct *khmmd;
+#endif
 
 #ifdef CONFIG_COMPACTION
 	int kcompactd_max_order;
