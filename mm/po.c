@@ -316,15 +316,16 @@ SYSCALL_DEFINE1(po_chunk_munmap, unsigned long, addr)
 {
 	unsigned long retval;
 	unsigned long flags;
+	struct mm_struct *mm = current->mm;
 
 	if ((PAGE_SIZE_REDEFINED - 1) & addr)
 		return -EINVAL;
 	if (!(addr >= PO_MAP_AREA_START && addr < PO_MAP_AREA_END))
 		return -EINVAL;
 
-	spin_lock_irqsave(&po_lock, flags);
+	down_write(&mm->mmap_sem);
 	retval = po_unmap_chunk(addr);
-	spin_unlock_irqrestore(&po_lock, flags);
+	up_write(&mm->mmap_sem);
 
 	return retval;
 }
@@ -335,6 +336,8 @@ long po_prepare_map_chunk(struct po_chunk *chunk, unsigned long prot, \
 	struct po_chunk *nc_map_metadata;
 	struct po_vma *vma;
 	unsigned long long cnt;
+	long ret;
+	struct mm_struct *mm = current->mm;
 
 	if (IS_NC_MAP(chunk->start)) {
 		nc_map_metadata = phys_to_virt(chunk->size);
@@ -344,8 +347,11 @@ long po_prepare_map_chunk(struct po_chunk *chunk, unsigned long prot, \
 		chunk = phys_to_virt(nc_map_metadata->next_pa);
 		cnt = 0;
 		do {
-			if (po_map_chunk(chunk->start, chunk->size, prot, flags, vma->start+cnt) < 0)
-				return 0;
+			down_write(&mm->mmap_sem);
+			ret = po_map_chunk(chunk->start, chunk->size, prot, flags, vma->start+cnt);
+			up_write(&mm->mmap_sem);
+			if (ret < 0)
+				return ret;
 			cnt += chunk->size;
 			if (chunk->next_pa == NULL)
 				break;
@@ -353,7 +359,10 @@ long po_prepare_map_chunk(struct po_chunk *chunk, unsigned long prot, \
 		} while (cnt < nc_map_metadata->size);
 		return vma->start;
 	} else {
-		return po_map_chunk(chunk->start, chunk->size, prot, flags, chunk->start+PO_MAP_AREA_START);
+		down_write(&mm->mmap_sem);
+		ret = po_map_chunk(chunk->start, chunk->size, prot, flags, chunk->start+PO_MAP_AREA_START);
+		up_write(&mm->mmap_sem);
+		return ret;
 	}
 }
 
@@ -499,14 +508,13 @@ SYSCALL_DEFINE4(po_extend, unsigned long, pod, size_t, len, \
 		flush_clwb(&(prev->next_pa), sizeof(prev->next_pa));
 		_mm_sfence();
 	}
+	spin_unlock_irqrestore(&po_lock, irq_flags);
 
 	retval = po_prepare_map_chunk(new_chunk, prot, flags | MAP_USE_PM);
 	if (retval < 0) {
-		spin_unlock_irqrestore(&po_lock, irq_flags);
 		return retval;
 	}
 	desc->size += len;
-	spin_unlock_irqrestore(&po_lock, irq_flags);
 	return retval;
 }
 
@@ -557,6 +565,7 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 	unsigned long start;
 	long ret = 0;
 	unsigned long flags;
+	struct mm_struct *mm = current->mm;
 
 	spin_lock_irqsave(&po_lock, flags);
 	desc = pos_get(pod);
@@ -608,11 +617,16 @@ SYSCALL_DEFINE3(po_shrink, unsigned long, pod, unsigned long, addr, size_t, len)
 	}
 
 unmap_and_free_chunk:
+	spin_unlock_irqrestore(&po_lock, flags);
+
+	down_write(&mm->mmap_sem);
 	ret = po_unmap_chunk(addr);
+	up_write(&mm->mmap_sem);
 	if (ret < 0) {
-		spin_unlock_irqrestore(&po_lock, flags);
 		return ret;
 	}
+
+	spin_lock_irqsave(&po_lock, flags);
 	po_free_chunk(curr);
 	desc->size -= curr->size;
 	flush_clwb(&(desc->size), sizeof(desc->size));

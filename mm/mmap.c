@@ -2795,6 +2795,7 @@ int do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 /*
  * map a normal chunk or nc chunk.
  * if succeeds, return mapped address, or NULL.
+ * NOTE: the caller must hold the lock: down_write(&mm->mmap_sem);
  */
 long po_map_chunk(unsigned long start, size_t len, unsigned long prot, \
 	unsigned long flags, unsigned long fixed_address)
@@ -2891,11 +2892,8 @@ long po_map_chunk(unsigned long start, size_t len, unsigned long prot, \
 		}
 	}
 	/* insert vma(fixed_address) into mm_struct */
-	if (down_write_killable(&mm->mmap_sem))
-		return -EINTR;
 	/* uf should be NULL, because we won't use that logic */
 	mmap_region(NULL, fixed_address, len, vm_flags, 0, NULL);
-	up_write(&mm->mmap_sem);
 	return fixed_address;
 }
 
@@ -2919,10 +2917,6 @@ long po_unmap_chunk(unsigned long start)
         end = vma->vm_end;
         if (vma->vm_start >= end)
                 return 0;
-
-        if (down_write_killable(&mm->mmap_sem))
-                return -EINTR;
-
         /* remove vma from mm */
         detach_vmas_to_be_unmapped(mm, vma, prev, end);
 
@@ -2936,7 +2930,6 @@ long po_unmap_chunk(unsigned long start)
         arch_unmap(mm, vma, start, end);
         remove_vma_list(mm, vma);
 
-        up_write(&mm->mmap_sem);
         return 0;
 }
 
