@@ -4297,8 +4297,6 @@ void migrate_active_lru_list(pg_data_t *pgdat, enum lru_list lru)
 
 	lru_add_drain();
 
-	isolate_mode |= ISOLATE_UNMAPPED;
-
 	spin_lock_irq(&pgdat->lru_lock);
 	nr_taken = isolate_migrate_pages(scan_page_num, lruvec, &l_hold, &nr_scanned, isolate_mode, lru);
 	__mod_node_page_state(pgdat, NR_ISOLATED_ANON + file, nr_taken);
@@ -4511,7 +4509,6 @@ void migrate_inactive_lru_list(pg_data_t *pgdat, enum lru_list lru)
 	struct zone_reclaim_stat *reclaim_stat = &lruvec->reclaim_stat;
 
 	lru_add_drain();
-	isolate_mode |= ISOLATE_UNMAPPED;
 
 	spin_lock_irq(&pgdat->lru_lock);
 	nr_taken = isolate_migrate_pages(scan_page_num, lruvec, &page_list, &nr_scanned, isolate_mode, lru);
