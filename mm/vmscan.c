@@ -4267,7 +4267,11 @@ static struct page* alloc_promote_page(struct page *page, unsigned long node)
 		return thp;
 	}
 	else {
-		return __alloc_pages_node(node, gfp, 0);	// Todo alloc_from_DRAM
+		struct zone* zone = NODE_DATA(node)->node_zones + ZONE_NORMAL;
+		if (!zone_watermark_ok(zone, 0, high_wmark_pages(zone) + 1, 0, gfp)) 
+			return NULL;
+		else
+			return __alloc_pages_node(node, gfp, 0);	// Todo alloc_from_DRAM
 	}	
 }
 
@@ -4382,8 +4386,13 @@ static struct page* alloc_demote_page(struct page *page, unsigned long node)
 		prep_transhuge_page(thp);
 		return thp;
 	}
-	else
-		return __alloc_pages_node(node, gfp, 0);	// Todo alloc_from_pm
+	else {
+		struct zone* zone = NODE_DATA(node)->node_zones + ZONE_MOVABLE;
+		if (!zone_watermark_ok(zone, 0, high_wmark_pages(zone) + 1, 0, gfp)) 
+			return NULL;
+		else
+			return __alloc_pages_node(node, gfp, 0);	// Todo alloc_from_pm
+	}
 }
 
 // refer to shrink_page_list
